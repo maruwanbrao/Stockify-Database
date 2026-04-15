@@ -1,0 +1,1818 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
+  <title>ระบบจัดการสินค้าคงคลัง</title>
+
+  <!-- Google Fonts: Sarabun (Thai) + Chakra Petch (display) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Html5-QRCode for barcode scanning -->
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+
+  <style>
+    /* =====================================================
+       CSS VARIABLES & RESET
+    ===================================================== */
+    :root {
+      --bg:         #0b1120;
+      --surface:    #131d30;
+      --surface2:   #1a2840;
+      --border:     #243452;
+      --accent:     #f5a623;
+      --accent2:    #ff6b35;
+      --green:      #22c55e;
+      --red:        #ef4444;
+      --blue:       #3b82f6;
+      --text:       #e8edf5;
+      --text2:      #8899bb;
+      --font-th:    'Sarabun', sans-serif;
+      --font-disp:  'Chakra Petch', sans-serif;
+      --radius:     14px;
+      --radius-sm:  8px;
+      --shadow:     0 4px 24px rgba(0,0,0,0.4);
+      --nav-h:      70px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; }
+    body {
+      font-family: var(--font-th);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button { font-family: var(--font-th); cursor: pointer; border: none; outline: none; }
+    input, select, textarea { font-family: var(--font-th); outline: none; }
+    a { text-decoration: none; color: inherit; }
+
+    /* =====================================================
+       SCROLLBAR
+    ===================================================== */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+    /* =====================================================
+       PIN LOGIN SCREEN
+    ===================================================== */
+    #pin-screen {
+      position: fixed; inset: 0; z-index: 999;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 28px;
+      padding: 24px;
+    }
+    #pin-screen.hidden { display: none; }
+
+    .pin-logo {
+      text-align: center;
+    }
+    .pin-logo .logo-icon {
+      width: 72px; height: 72px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 32px;
+      margin: 0 auto 12px;
+      box-shadow: 0 8px 32px rgba(245,166,35,0.35);
+    }
+    .pin-logo h1 {
+      font-family: var(--font-disp);
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--text);
+    }
+    .pin-logo p { font-size: 0.85rem; color: var(--text2); margin-top: 4px; }
+
+    .pin-dots {
+      display: flex; gap: 12px;
+    }
+    .pin-dot {
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      border: 2px solid var(--border);
+      background: transparent;
+      transition: all 0.2s;
+    }
+    .pin-dot.filled {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 8px rgba(245,166,35,0.5);
+    }
+    .pin-dot.error {
+      background: var(--red);
+      border-color: var(--red);
+      animation: shake 0.4s ease;
+    }
+
+    .pin-pad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%; max-width: 280px;
+    }
+    .pin-btn {
+      height: 68px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: var(--text);
+      transition: all 0.15s;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .pin-btn:active { transform: scale(0.93); background: var(--border); }
+    .pin-btn.del { font-size: 1.1rem; color: var(--text2); }
+    .pin-btn.enter {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 4px 16px rgba(245,166,35,0.3);
+    }
+    .pin-hint { font-size: 0.75rem; color: var(--text2); }
+
+    /* =====================================================
+       APP SHELL
+    ===================================================== */
+    #app { display: none; flex-direction: column; min-height: 100dvh; }
+    #app.visible { display: flex; }
+
+    /* TOP BAR */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 16px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .topbar-title {
+      font-family: var(--font-disp);
+      font-size: 1.05rem; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .topbar-title .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s infinite;
+    }
+    .topbar-actions { display: flex; gap: 8px; }
+    .icon-btn {
+      width: 38px; height: 38px;
+      border-radius: var(--radius-sm);
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      font-size: 1.1rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .icon-btn:active { transform: scale(0.9); }
+
+    /* MAIN CONTENT */
+    .main-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      padding-bottom: calc(var(--nav-h) + 16px);
+    }
+
+    /* BOTTOM NAV */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+      height: var(--nav-h);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 8px;
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-item {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 4px;
+      padding: 8px 4px;
+      border-radius: var(--radius-sm);
+      color: var(--text2);
+      font-size: 0.65rem;
+      font-weight: 500;
+      transition: all 0.2s;
+      cursor: pointer;
+      background: none;
+    }
+    .nav-item .nav-icon { font-size: 1.35rem; transition: transform 0.2s; }
+    .nav-item.active { color: var(--accent); }
+    .nav-item.active .nav-icon { transform: scale(1.15); }
+
+    /* =====================================================
+       PAGES
+    ===================================================== */
+    .page { display: none; animation: fadeUp 0.3s ease; }
+    .page.active { display: block; }
+
+    /* =====================================================
+       CARDS & COMMON
+    ===================================================== */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .card-title {
+      font-size: 0.8rem; font-weight: 600;
+      color: var(--text2); text-transform: uppercase; letter-spacing: 0.5px;
+    }
+
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 1rem; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .section-title .icon { font-size: 1.1rem; }
+
+    /* STAT CARDS */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+    .stat-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .stat-card.orange::before { background: linear-gradient(90deg, var(--accent), var(--accent2)); }
+    .stat-card.green::before  { background: var(--green); }
+    .stat-card.red::before    { background: var(--red); }
+    .stat-card.blue::before   { background: var(--blue); }
+
+    .stat-icon {
+      width: 36px; height: 36px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+      margin-bottom: 10px;
+    }
+    .stat-card.orange .stat-icon { background: rgba(245,166,35,0.15); }
+    .stat-card.green  .stat-icon { background: rgba(34,197,94,0.15); }
+    .stat-card.red    .stat-icon { background: rgba(239,68,68,0.15); }
+    .stat-card.blue   .stat-icon { background: rgba(59,130,246,0.15); }
+
+    .stat-value {
+      font-family: var(--font-disp);
+      font-size: 1.5rem; font-weight: 700;
+      line-height: 1;
+    }
+    .stat-label { font-size: 0.72rem; color: var(--text2); margin-top: 4px; }
+
+    /* BADGES */
+    .badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      font-size: 0.7rem;
+      font-weight: 600;
+    }
+    .badge.green  { background: rgba(34,197,94,0.15);  color: var(--green); }
+    .badge.red    { background: rgba(239,68,68,0.15);   color: var(--red); }
+    .badge.orange { background: rgba(245,166,35,0.15);  color: var(--accent); }
+    .badge.blue   { background: rgba(59,130,246,0.15);  color: var(--blue); }
+    .badge.gray   { background: rgba(136,153,187,0.15); color: var(--text2); }
+
+    /* BUTTONS */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 12px 20px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem; font-weight: 600;
+      transition: all 0.15s;
+      cursor: pointer; border: none;
+    }
+    .btn:active { transform: scale(0.96); }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(245,166,35,0.3);
+    }
+    .btn-secondary {
+      background: var(--surface2);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-danger  { background: var(--red); color: #fff; }
+    .btn-success { background: var(--green); color: #fff; }
+    .btn-full    { width: 100%; }
+    .btn-sm      { padding: 8px 14px; font-size: 0.8rem; }
+
+    /* FORMS */
+    .form-group { margin-bottom: 14px; }
+    .form-label {
+      display: block; font-size: 0.78rem; font-weight: 600;
+      color: var(--text2); margin-bottom: 6px;
+    }
+    .form-control {
+      width: 100%; padding: 12px 14px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text); font-size: 0.9rem;
+      transition: border-color 0.2s;
+    }
+    .form-control:focus { border-color: var(--accent); }
+    .form-control::placeholder { color: var(--text2); opacity: 0.6; }
+    select.form-control option { background: var(--surface2); }
+
+    .form-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+
+    /* SEARCH BAR */
+    .search-wrap {
+      position: relative; margin-bottom: 14px;
+    }
+    .search-wrap .search-icon {
+      position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+      color: var(--text2); font-size: 1rem;
+      pointer-events: none;
+    }
+    .search-input {
+      width: 100%; padding: 11px 14px 11px 38px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text); font-size: 0.9rem;
+    }
+    .search-input:focus { border-color: var(--accent); }
+
+    /* =====================================================
+       PRODUCT LIST
+    ===================================================== */
+    .product-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px;
+      margin-bottom: 10px;
+      display: flex; align-items: center; gap: 12px;
+      transition: border-color 0.2s;
+    }
+    .product-item:active { border-color: var(--accent); }
+    .product-item.low-stock { border-left: 3px solid var(--red); }
+
+    .product-avatar {
+      width: 44px; height: 44px; min-width: 44px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+      background: var(--surface2);
+    }
+    .product-info { flex: 1; min-width: 0; }
+    .product-name {
+      font-size: 0.9rem; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .product-code { font-size: 0.72rem; color: var(--text2); }
+    .product-meta { display: flex; gap: 6px; margin-top: 5px; flex-wrap: wrap; }
+
+    .product-actions { display: flex; gap: 6px; }
+    .act-btn {
+      width: 34px; height: 34px;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.95rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      transition: all 0.15s;
+      cursor: pointer;
+    }
+    .act-btn:active { transform: scale(0.88); }
+    .act-btn.edit:active { color: var(--accent); border-color: var(--accent); }
+    .act-btn.del:active  { color: var(--red);    border-color: var(--red); }
+    .act-btn.stock:active{ color: var(--green);  border-color: var(--green); }
+
+    /* =====================================================
+       TRANSACTION LIST
+    ===================================================== */
+    .tx-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 13px;
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .tx-badge {
+      width: 38px; height: 38px; min-width: 38px;
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700;
+    }
+    .tx-badge.in  { background: rgba(34,197,94,0.15); color: var(--green); }
+    .tx-badge.out { background: rgba(239,68,68,0.15);  color: var(--red); }
+    .tx-info { flex: 1; min-width: 0; }
+    .tx-name {
+      font-size: 0.85rem; font-weight: 600;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .tx-date { font-size: 0.7rem; color: var(--text2); }
+    .tx-qty {
+      font-family: var(--font-disp);
+      font-size: 1rem; font-weight: 700;
+    }
+    .tx-qty.in  { color: var(--green); }
+    .tx-qty.out { color: var(--red); }
+
+    /* =====================================================
+       MODAL / DRAWER
+    ===================================================== */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.7);
+      backdrop-filter: blur(4px);
+      display: flex; align-items: flex-end;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+    .modal-sheet {
+      width: 100%; max-width: 560px; margin: 0 auto;
+      background: var(--surface);
+      border-radius: 24px 24px 0 0;
+      padding: 20px 20px calc(env(safe-area-inset-bottom) + 24px);
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+      max-height: 92dvh;
+      overflow-y: auto;
+    }
+    .modal-overlay.open .modal-sheet { transform: translateY(0); }
+
+    .modal-handle {
+      width: 40px; height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      margin: 0 auto 20px;
+    }
+    .modal-title {
+      font-size: 1.1rem; font-weight: 700; margin-bottom: 18px;
+      display: flex; align-items: center; gap: 8px;
+    }
+
+    /* =====================================================
+       STOCK MODAL SPECIFIC
+    ===================================================== */
+    .stock-type-toggle {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 8px; margin-bottom: 16px;
+    }
+    .type-btn {
+      padding: 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.9rem; font-weight: 600;
+      text-align: center;
+      cursor: pointer;
+      border: 2px solid var(--border);
+      background: var(--surface2);
+      color: var(--text2);
+      transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .type-btn.active.in  { border-color: var(--green); background: rgba(34,197,94,0.1); color: var(--green); }
+    .type-btn.active.out { border-color: var(--red);   background: rgba(239,68,68,0.1);  color: var(--red); }
+
+    .qty-control {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 6px;
+    }
+    .qty-btn {
+      width: 42px; height: 42px;
+      border-radius: 8px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-size: 1.3rem;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: all 0.15s;
+    }
+    .qty-btn:active { transform: scale(0.88); }
+    .qty-display {
+      flex: 1; text-align: center;
+      font-family: var(--font-disp);
+      font-size: 1.8rem; font-weight: 700;
+      background: none; border: none;
+      color: var(--text);
+    }
+
+    /* =====================================================
+       PROFIT DISPLAY
+    ===================================================== */
+    .profit-bar {
+      background: var(--surface2);
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+    .profit-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), #86efac);
+      border-radius: 999px;
+      transition: width 0.5s ease;
+    }
+
+    /* =====================================================
+       SCANNER
+    ===================================================== */
+    #scanner-container {
+      width: 100%; border-radius: var(--radius);
+      overflow: hidden;
+      background: #000;
+      aspect-ratio: 1;
+      position: relative;
+    }
+    #scanner-container video { width: 100%; height: 100%; object-fit: cover; }
+    .scanner-frame {
+      position: absolute; inset: 20%;
+      border: 2px solid var(--accent);
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+    }
+    .scanner-line {
+      position: absolute; left: 5%; right: 5%; height: 2px;
+      background: var(--accent);
+      box-shadow: 0 0 8px var(--accent);
+      animation: scanLine 2s linear infinite;
+    }
+
+    /* =====================================================
+       ALERT BANNER
+    ===================================================== */
+    .alert-list { margin-bottom: 14px; }
+    .alert-item {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.82rem;
+      margin-bottom: 6px;
+    }
+    .alert-item .alert-icon { font-size: 1rem; }
+
+    /* =====================================================
+       TOAST
+    ===================================================== */
+    #toast-container {
+      position: fixed; top: 16px; left: 16px; right: 16px; z-index: 500;
+      display: flex; flex-direction: column; gap: 8px;
+      pointer-events: none;
+    }
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.85rem; font-weight: 500;
+      box-shadow: var(--shadow);
+      animation: slideDown 0.3s ease, fadeOut 0.4s ease 2.6s forwards;
+      border-left: 3px solid var(--green);
+    }
+    .toast.error  { border-left-color: var(--red); }
+    .toast.warn   { border-left-color: var(--accent); }
+    .toast-icon   { font-size: 1.1rem; }
+
+    /* =====================================================
+       LOADING OVERLAY
+    ===================================================== */
+    #loading-overlay {
+      position: fixed; inset: 0; z-index: 400;
+      background: rgba(11,17,32,0.8);
+      backdrop-filter: blur(4px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 16px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    #loading-overlay.show { opacity: 1; pointer-events: all; }
+    .spinner {
+      width: 44px; height: 44px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    .loading-text { font-size: 0.85rem; color: var(--text2); }
+
+    /* =====================================================
+       EMPTY STATE
+    ===================================================== */
+    .empty-state {
+      text-align: center; padding: 40px 20px;
+      color: var(--text2);
+    }
+    .empty-state .empty-icon { font-size: 3rem; margin-bottom: 12px; opacity: 0.4; }
+    .empty-state p { font-size: 0.9rem; }
+
+    /* =====================================================
+       DASHBOARD CHART (simple bar)
+    ===================================================== */
+    .mini-chart {
+      display: flex; align-items: flex-end; gap: 4px;
+      height: 50px; margin-top: 8px;
+    }
+    .chart-bar {
+      flex: 1; border-radius: 4px 4px 0 0;
+      background: var(--border);
+      transition: height 0.5s ease;
+    }
+    .chart-bar.active { background: linear-gradient(180deg, var(--accent), var(--accent2)); }
+
+    /* =====================================================
+       CATEGORY FILTER CHIPS
+    ===================================================== */
+    .filter-chips {
+      display: flex; gap: 6px;
+      overflow-x: auto; padding-bottom: 4px;
+      margin-bottom: 12px;
+      scrollbar-width: none;
+    }
+    .filter-chips::-webkit-scrollbar { display: none; }
+    .chip {
+      white-space: nowrap;
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.78rem; font-weight: 600;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      color: var(--text2);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .chip.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* =====================================================
+       ANIMATIONS
+    ===================================================== */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 6px var(--green); }
+      50%       { box-shadow: 0 0 12px var(--green); }
+    }
+    @keyframes scanLine {
+      from { top: 20%; } to { top: 78%; }
+    }
+    @keyframes slideDown {
+      from { transform: translateY(-20px); opacity: 0; }
+      to   { transform: translateY(0); opacity: 1; }
+    }
+    @keyframes fadeOut {
+      to { opacity: 0; transform: translateY(-8px); }
+    }
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25%       { transform: translateX(-6px); }
+      75%       { transform: translateX(6px); }
+    }
+
+    /* =====================================================
+       RESPONSIVE TWEAKS
+    ===================================================== */
+    @media (min-width: 480px) {
+      .main-content { max-width: 560px; margin: 0 auto; }
+      .bottom-nav   { max-width: 560px; left: 50%; transform: translateX(-50%); }
+    }
+
+    /* =====================================================
+       MISC
+    ===================================================== */
+    .divider { height: 1px; background: var(--border); margin: 14px 0; }
+    .text-muted { color: var(--text2); font-size: 0.82rem; }
+    .font-disp { font-family: var(--font-disp); }
+    .pull-right { margin-left: auto; }
+    .flex-center { display: flex; align-items: center; gap: 8px; }
+    .mb-0 { margin-bottom: 0 !important; }
+  </style>
+</head>
+<body>
+
+<!-- =======================================
+     PIN LOGIN
+======================================= -->
+<div id="pin-screen">
+  <div class="pin-logo">
+    <div class="logo-icon">📦</div>
+    <h1>STOCKIFY</h1>
+    <p>ระบบจัดการสินค้าคงคลัง</p>
+  </div>
+  <div class="pin-dots">
+    <div class="pin-dot" id="pd0"></div>
+    <div class="pin-dot" id="pd1"></div>
+    <div class="pin-dot" id="pd2"></div>
+    <div class="pin-dot" id="pd3"></div>
+  </div>
+  <div class="pin-pad">
+    <button class="pin-btn" onclick="pinInput('1')">1</button>
+    <button class="pin-btn" onclick="pinInput('2')">2</button>
+    <button class="pin-btn" onclick="pinInput('3')">3</button>
+    <button class="pin-btn" onclick="pinInput('4')">4</button>
+    <button class="pin-btn" onclick="pinInput('5')">5</button>
+    <button class="pin-btn" onclick="pinInput('6')">6</button>
+    <button class="pin-btn" onclick="pinInput('7')">7</button>
+    <button class="pin-btn" onclick="pinInput('8')">8</button>
+    <button class="pin-btn" onclick="pinInput('9')">9</button>
+    <button class="pin-btn del" onclick="pinDel()">⌫</button>
+    <button class="pin-btn" onclick="pinInput('0')">0</button>
+    <button class="pin-btn enter" onclick="pinSubmit()">✓</button>
+  </div>
+  <p class="pin-hint">รหัส PIN เริ่มต้น: 1234</p>
+</div>
+
+<!-- =======================================
+     MAIN APP
+======================================= -->
+<div id="app">
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="topbar-title">
+      <span>📦</span>
+      <span>STOCKIFY</span>
+      <div class="dot"></div>
+    </div>
+    <div class="topbar-actions">
+      <button class="icon-btn" onclick="openScanner()" title="สแกนบาร์โค้ด">📷</button>
+      <button class="icon-btn" onclick="refreshData()" title="รีเฟรช">🔄</button>
+    </div>
+  </div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content">
+
+    <!-- PAGE: DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="stats-grid">
+        <div class="stat-card orange">
+          <div class="stat-icon">📦</div>
+          <div class="stat-value font-disp" id="stat-products">0</div>
+          <div class="stat-label">สินค้าทั้งหมด</div>
+        </div>
+        <div class="stat-card green">
+          <div class="stat-icon">📊</div>
+          <div class="stat-value font-disp" id="stat-stock">0</div>
+          <div class="stat-label">สต็อกรวม</div>
+        </div>
+        <div class="stat-card blue">
+          <div class="stat-icon">💰</div>
+          <div class="stat-value font-disp" id="stat-value" style="font-size:1rem">฿0</div>
+          <div class="stat-label">มูลค่าสต็อก</div>
+        </div>
+        <div class="stat-card red">
+          <div class="stat-icon">⚠️</div>
+          <div class="stat-value font-disp" id="stat-low">0</div>
+          <div class="stat-label">สต็อกต่ำ</div>
+        </div>
+      </div>
+
+      <!-- Low stock alerts -->
+      <div id="alert-list" class="alert-list"></div>
+
+      <!-- Recent Transactions -->
+      <div class="section-header">
+        <div class="section-title"><span class="icon">🕐</span> รายการล่าสุด</div>
+        <button class="btn btn-secondary btn-sm" onclick="navTo('transactions')">ดูทั้งหมด</button>
+      </div>
+      <div id="recent-tx"></div>
+
+      <!-- Chart placeholder -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">กิจกรรม 7 วันล่าสุด</span>
+        </div>
+        <div class="mini-chart" id="mini-chart"></div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px">
+          <span class="text-muted" id="chart-label-start"></span>
+          <span class="text-muted" id="chart-label-end"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- PAGE: PRODUCTS -->
+    <div class="page" id="page-products">
+      <div class="section-header">
+        <div class="section-title"><span class="icon">📦</span> สินค้า</div>
+        <button class="btn btn-primary btn-sm" onclick="openProductModal()">+ เพิ่ม</button>
+      </div>
+
+      <div class="search-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="search" class="search-input" id="product-search"
+          placeholder="ค้นหาชื่อ หรือ รหัสสินค้า..." oninput="renderProducts()" />
+      </div>
+
+      <div class="filter-chips" id="category-chips">
+        <div class="chip active" data-cat="all" onclick="selectCat(this)">ทั้งหมด</div>
+      </div>
+
+      <div id="product-list"></div>
+    </div>
+
+    <!-- PAGE: STOCK -->
+    <div class="page" id="page-stock">
+      <div class="section-header">
+        <div class="section-title"><span class="icon">📊</span> จัดการสต็อก</div>
+      </div>
+
+      <!-- Quick stock action -->
+      <div class="card">
+        <div class="card-title" style="margin-bottom:12px">อัปเดตสต็อกด่วน</div>
+        <div class="search-wrap mb-0">
+          <span class="search-icon">🔍</span>
+          <input type="search" class="search-input" id="stock-search"
+            placeholder="ค้นหาสินค้าเพื่ออัปเดตสต็อก..." oninput="renderStockList()" />
+        </div>
+      </div>
+
+      <div id="stock-product-list"></div>
+    </div>
+
+    <!-- PAGE: TRANSACTIONS -->
+    <div class="page" id="page-transactions">
+      <div class="section-header">
+        <div class="section-title"><span class="icon">📋</span> ประวัติรายการ</div>
+      </div>
+
+      <div class="filter-chips">
+        <div class="chip active" data-tx-filter="all"   onclick="filterTx(this)">ทั้งหมด</div>
+        <div class="chip"        data-tx-filter="IN"    onclick="filterTx(this)">นำเข้า</div>
+        <div class="chip"        data-tx-filter="OUT"   onclick="filterTx(this)">จ่ายออก</div>
+      </div>
+
+      <div id="tx-list"></div>
+    </div>
+
+    <!-- PAGE: SETTINGS -->
+    <div class="page" id="page-settings">
+      <div class="section-title" style="margin-bottom:16px"><span class="icon">⚙️</span> ตั้งค่า</div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">เชื่อมต่อ Google Apps Script</div>
+        <div class="form-group">
+          <label class="form-label">API URL (Web App URL)</label>
+          <input type="url" class="form-control" id="api-url-input"
+            placeholder="https://script.google.com/macros/s/.../exec" />
+        </div>
+        <button class="btn btn-primary btn-full" onclick="saveApiUrl()">💾 บันทึก URL</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">เปลี่ยน PIN</div>
+        <div class="form-group">
+          <label class="form-label">PIN ใหม่ (4 หลัก)</label>
+          <input type="password" inputmode="numeric" maxlength="4" class="form-control"
+            id="new-pin" placeholder="กรอก PIN ใหม่" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">ยืนยัน PIN ใหม่</label>
+          <input type="password" inputmode="numeric" maxlength="4" class="form-control"
+            id="confirm-pin" placeholder="ยืนยัน PIN อีกครั้ง" />
+        </div>
+        <button class="btn btn-secondary btn-full" onclick="changePin()">🔒 เปลี่ยน PIN</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">สต็อกต่ำ (แจ้งเตือน)</div>
+        <div class="form-group mb-0">
+          <label class="form-label">จำนวนขั้นต่ำ (ชิ้น)</label>
+          <input type="number" class="form-control" id="low-stock-threshold"
+            value="10" min="1" onchange="saveLowThreshold()" />
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title" style="margin-bottom:14px">ข้อมูล</div>
+        <button class="btn btn-secondary btn-full" style="margin-bottom:8px" onclick="exportData()">📤 ส่งออก JSON</button>
+        <button class="btn btn-danger btn-full" onclick="clearCache()">🗑️ ล้าง Cache</button>
+      </div>
+
+      <div style="text-align:center; padding:20px 0; color:var(--text2); font-size:0.75rem">
+        STOCKIFY v1.0 • สร้างด้วย ❤️<br>
+        <span id="conn-status" style="color:var(--text2)">ยังไม่ได้เชื่อมต่อ API</span>
+      </div>
+    </div>
+
+  </div><!-- /main-content -->
+
+  <!-- BOTTOM NAV -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" id="nav-dashboard" onclick="navTo('dashboard')">
+      <span class="nav-icon">🏠</span>
+      <span>หน้าหลัก</span>
+    </button>
+    <button class="nav-item" id="nav-products" onclick="navTo('products')">
+      <span class="nav-icon">📦</span>
+      <span>สินค้า</span>
+    </button>
+    <button class="nav-item" id="nav-stock" onclick="navTo('stock')">
+      <span class="nav-icon">📊</span>
+      <span>สต็อก</span>
+    </button>
+    <button class="nav-item" id="nav-transactions" onclick="navTo('transactions')">
+      <span class="nav-icon">📋</span>
+      <span>ประวัติ</span>
+    </button>
+    <button class="nav-item" id="nav-settings" onclick="navTo('settings')">
+      <span class="nav-icon">⚙️</span>
+      <span>ตั้งค่า</span>
+    </button>
+  </nav>
+
+</div><!-- /app -->
+
+<!-- =======================================
+     MODALS
+======================================= -->
+
+<!-- Product Modal -->
+<div class="modal-overlay" id="product-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="product-modal-title">➕ เพิ่มสินค้า</div>
+    <input type="hidden" id="edit-product-code-original" />
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">รหัสสินค้า *</label>
+        <input type="text" class="form-control" id="f-code" placeholder="เช่น P001" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">หมวดหมู่</label>
+        <input type="text" class="form-control" id="f-category" placeholder="เช่น อิเล็กทรอนิกส์" />
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">ชื่อสินค้า *</label>
+      <input type="text" class="form-control" id="f-name" placeholder="ชื่อสินค้า" />
+    </div>
+
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">ราคาทุน (฿)</label>
+        <input type="number" class="form-control" id="f-cost" placeholder="0" oninput="calcProfit()" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">ราคาขาย (฿)</label>
+        <input type="number" class="form-control" id="f-sell" placeholder="0" oninput="calcProfit()" />
+      </div>
+    </div>
+
+    <!-- Profit preview -->
+    <div class="card" style="padding:12px; margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="text-muted">กำไรต่อหน่วย</span>
+        <span id="profit-val" class="font-disp" style="color:var(--green)">฿0</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px">
+        <span class="text-muted">อัตรากำไร</span>
+        <span id="profit-pct" style="color:var(--accent)">0%</span>
+      </div>
+      <div class="profit-bar"><div class="profit-fill" id="profit-bar" style="width:0%"></div></div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">จำนวนสต็อกเริ่มต้น</label>
+      <input type="number" class="form-control" id="f-stock" placeholder="0" min="0" />
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn btn-secondary" onclick="closeModal('product-modal')">ยกเลิก</button>
+      <button class="btn btn-primary" onclick="saveProduct()">💾 บันทึก</button>
+    </div>
+  </div>
+</div>
+
+<!-- Stock Update Modal -->
+<div class="modal-overlay" id="stock-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📊 อัปเดตสต็อก</div>
+
+    <div class="card" style="padding:12px;margin-bottom:14px">
+      <div style="font-weight:700;font-size:0.95rem" id="stock-modal-name">-</div>
+      <div style="font-size:0.78rem;color:var(--text2);margin-top:2px" id="stock-modal-code">-</div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <span class="text-muted">สต็อกปัจจุบัน:</span>
+        <span class="font-disp" style="font-size:1.1rem;font-weight:700" id="stock-modal-qty">0</span>
+      </div>
+    </div>
+
+    <div class="stock-type-toggle">
+      <div class="type-btn active in" id="type-in" onclick="setStockType('IN')">📥 นำเข้าสต็อก</div>
+      <div class="type-btn out"       id="type-out" onclick="setStockType('OUT')">📤 จ่ายออก</div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">จำนวน</label>
+      <div class="qty-control">
+        <button class="qty-btn" onclick="adjustQty(-1)">−</button>
+        <input type="number" class="qty-display" id="update-qty" value="1" min="1" />
+        <button class="qty-btn" onclick="adjustQty(1)">+</button>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">หมายเหตุ (ไม่บังคับ)</label>
+      <input type="text" class="form-control" id="update-note" placeholder="เช่น รับของจากซัพพลายเออร์" />
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn btn-secondary" onclick="closeModal('stock-modal')">ยกเลิก</button>
+      <button class="btn btn-primary"   onclick="confirmStockUpdate()">✅ ยืนยัน</button>
+    </div>
+  </div>
+</div>
+
+<!-- Scanner Modal -->
+<div class="modal-overlay" id="scanner-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📷 สแกนบาร์โค้ด / QR Code</div>
+    <div id="scanner-container">
+      <div id="qr-reader"></div>
+    </div>
+    <div style="margin-top:12px">
+      <div class="form-group">
+        <label class="form-label">หรือกรอกรหัสด้วยตนเอง</label>
+        <div style="display:flex;gap:8px">
+          <input type="text" class="form-control" id="manual-scan-input"
+            placeholder="รหัสสินค้า..." style="flex:1" />
+          <button class="btn btn-primary" onclick="manualScan()">ค้นหา</button>
+        </div>
+      </div>
+    </div>
+    <button class="btn btn-secondary btn-full" onclick="closeScanner()">❌ ปิด</button>
+  </div>
+</div>
+
+<!-- Confirm Delete Modal -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal-sheet">
+    <div class="modal-handle"></div>
+    <div class="modal-title">🗑️ ยืนยันการลบ</div>
+    <p style="color:var(--text2);margin-bottom:20px" id="confirm-msg">
+      คุณต้องการลบสินค้านี้ใช่หรือไม่? การดำเนินการนี้ไม่สามารถยกเลิกได้
+    </p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <button class="btn btn-secondary" onclick="closeModal('confirm-modal')">ยกเลิก</button>
+      <button class="btn btn-danger"    id="confirm-ok-btn">ลบ</button>
+    </div>
+  </div>
+</div>
+
+<!-- =======================================
+     TOASTS & LOADING
+======================================= -->
+<div id="toast-container"></div>
+<div id="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text" id="loading-text">กำลังโหลด...</div>
+</div>
+
+<!-- =======================================
+     JAVASCRIPT
+======================================= -->
+<script>
+/* =====================================================
+   CONFIG & STATE
+===================================================== */
+const CONFIG = {
+  DEFAULT_PIN: '1234',
+  LOW_STOCK_DEFAULT: 10,
+  CACHE_EXPIRY: 5 * 60 * 1000, // 5 min
+};
+
+let state = {
+  products: [],
+  transactions: [],
+  apiUrl: '',
+  currentPage: 'dashboard',
+  selectedCat: 'all',
+  txFilter: 'all',
+  editingProductCode: null,
+  stockUpdateProduct: null,
+  stockType: 'IN',
+  qrScanner: null,
+  lowThreshold: CONFIG.LOW_STOCK_DEFAULT,
+};
+
+/* =====================================================
+   LOCAL STORAGE HELPERS
+===================================================== */
+const Store = {
+  get: (k, def = null) => {
+    try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }
+    catch { return def; }
+  },
+  set: (k, v) => localStorage.setItem(k, JSON.stringify(v)),
+  rm:  (k)    => localStorage.removeItem(k),
+};
+
+/* =====================================================
+   PIN LOGIN
+===================================================== */
+let pinBuffer = '';
+
+function pinInput(d) {
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += d;
+  updatePinDots();
+  if (pinBuffer.length === 4) setTimeout(pinSubmit, 120);
+}
+function pinDel() {
+  pinBuffer = pinBuffer.slice(0, -1);
+  updatePinDots();
+}
+function updatePinDots() {
+  for (let i = 0; i < 4; i++) {
+    document.getElementById('pd' + i).className = 'pin-dot' + (i < pinBuffer.length ? ' filled' : '');
+  }
+}
+function pinSubmit() {
+  const savedPin = Store.get('pin', CONFIG.DEFAULT_PIN);
+  if (pinBuffer === savedPin) {
+    document.getElementById('pin-screen').classList.add('hidden');
+    document.getElementById('app').classList.add('visible');
+    initApp();
+  } else {
+    for (let i = 0; i < 4; i++) document.getElementById('pd' + i).className = 'pin-dot error';
+    setTimeout(() => { pinBuffer = ''; updatePinDots(); }, 700);
+  }
+}
+// Keyboard support for PIN
+document.addEventListener('keydown', e => {
+  if (document.getElementById('pin-screen').classList.contains('hidden')) return;
+  if (e.key >= '0' && e.key <= '9') pinInput(e.key);
+  else if (e.key === 'Backspace') pinDel();
+  else if (e.key === 'Enter') pinSubmit();
+});
+
+/* =====================================================
+   APP INIT
+===================================================== */
+function initApp() {
+  state.apiUrl        = Store.get('apiUrl', '');
+  state.lowThreshold  = Store.get('lowThreshold', CONFIG.LOW_STOCK_DEFAULT);
+  document.getElementById('api-url-input').value    = state.apiUrl;
+  document.getElementById('low-stock-threshold').value = state.lowThreshold;
+
+  const cached = Store.get('productsCache');
+  const txCache = Store.get('txCache');
+  if (cached && (Date.now() - cached.ts < CONFIG.CACHE_EXPIRY)) {
+    state.products = cached.data;
+    state.transactions = txCache ? txCache.data : [];
+    renderAll();
+  }
+  refreshData();
+}
+
+/* =====================================================
+   API LAYER
+===================================================== */
+function showLoading(msg = 'กำลังโหลด...') {
+  document.getElementById('loading-text').textContent = msg;
+  document.getElementById('loading-overlay').classList.add('show');
+}
+function hideLoading() {
+  document.getElementById('loading-overlay').classList.remove('show');
+}
+
+async function apiCall(action, data = {}) {
+  if (!state.apiUrl) {
+    showToast('ยังไม่ได้ตั้งค่า API URL', 'warn');
+    return null;
+  }
+  try {
+    const url = new URL(state.apiUrl);
+    url.searchParams.set('action', action);
+
+    let res;
+    if (action.startsWith('get')) {
+      // GET request
+      Object.entries(data).forEach(([k, v]) => url.searchParams.set(k, v));
+      res = await fetch(url.toString());
+    } else {
+      // POST request
+      res = await fetch(url.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ...data }),
+      });
+    }
+    const json = await res.json();
+    if (json.status === 'error') throw new Error(json.message);
+    return json;
+  } catch (err) {
+    console.error('API Error:', err);
+    showToast('เกิดข้อผิดพลาด: ' + err.message, 'error');
+    return null;
+  }
+}
+
+async function refreshData() {
+  if (!state.apiUrl) { renderAll(); return; }
+  showLoading('กำลังดึงข้อมูล...');
+  try {
+    const [pRes, tRes] = await Promise.all([
+      apiCall('getProducts'),
+      apiCall('getTransactions'),
+    ]);
+    if (pRes) {
+      state.products = pRes.data || [];
+      Store.set('productsCache', { ts: Date.now(), data: state.products });
+      document.getElementById('conn-status').textContent = '✅ เชื่อมต่อ API สำเร็จ';
+      document.getElementById('conn-status').style.color = 'var(--green)';
+    }
+    if (tRes) {
+      state.transactions = tRes.data || [];
+      Store.set('txCache', { ts: Date.now(), data: state.transactions });
+    }
+    renderAll();
+    showToast('อัปเดตข้อมูลสำเร็จ ✓');
+  } finally {
+    hideLoading();
+  }
+}
+
+/* =====================================================
+   RENDER FUNCTIONS
+===================================================== */
+function renderAll() {
+  renderDashboard();
+  renderProducts();
+  renderStockList();
+  renderTransactions();
+}
+
+// ---- DASHBOARD ----
+function renderDashboard() {
+  const p = state.products;
+  const totalStock = p.reduce((s, x) => s + (+x.StockQty || 0), 0);
+  const stockVal   = p.reduce((s, x) => s + ((+x.CostPrice || 0) * (+x.StockQty || 0)), 0);
+  const lowItems   = p.filter(x => (+x.StockQty || 0) <= state.lowThreshold);
+
+  document.getElementById('stat-products').textContent = p.length;
+  document.getElementById('stat-stock').textContent    = totalStock.toLocaleString();
+  document.getElementById('stat-value').textContent    = '฿' + stockVal.toLocaleString('th-TH', {maximumFractionDigits:0});
+  document.getElementById('stat-low').textContent      = lowItems.length;
+
+  // Alerts
+  const al = document.getElementById('alert-list');
+  al.innerHTML = lowItems.slice(0, 3).map(x =>
+    `<div class="alert-item">
+      <span class="alert-icon">⚠️</span>
+      <span><b>${escHtml(x.ProductName)}</b> — สต็อกเหลือ <b>${x.StockQty}</b> ชิ้น</span>
+    </div>`
+  ).join('');
+
+  // Recent TX
+  const rt = document.getElementById('recent-tx');
+  const recent = (state.transactions || []).slice(0, 5);
+  rt.innerHTML = recent.length
+    ? recent.map(txCard).join('')
+    : `<div class="empty-state"><div class="empty-icon">📭</div><p>ยังไม่มีรายการ</p></div>`;
+
+  // Mini chart
+  renderMiniChart();
+}
+
+function renderMiniChart() {
+  const txs = state.transactions || [];
+  const days = 7;
+  const bars = [];
+  const now = new Date();
+  let maxVal = 1;
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(now.getDate() - i);
+    const ds = d.toISOString().slice(0, 10);
+    const count = txs.filter(t => (t.Date || '').startsWith(ds)).length;
+    bars.push({ ds, count }); if (count > maxVal) maxVal = count;
+  }
+  const chart = document.getElementById('mini-chart');
+  const today = new Date().toISOString().slice(0, 10);
+  chart.innerHTML = bars.map(b =>
+    `<div class="chart-bar${b.ds === today ? ' active' : ''}"
+       style="height:${Math.max(8, (b.count / maxVal) * 50)}px"
+       title="${b.ds}: ${b.count} รายการ"></div>`
+  ).join('');
+  const labels = bars;
+  document.getElementById('chart-label-start').textContent = fmtDate(labels[0].ds);
+  document.getElementById('chart-label-end').textContent   = fmtDate(labels[labels.length - 1].ds);
+}
+
+// ---- PRODUCTS ----
+function renderProducts() {
+  const q = (document.getElementById('product-search').value || '').toLowerCase();
+  const cats = new Set(['all']);
+  state.products.forEach(p => { if (p.Category) cats.add(p.Category); });
+
+  // Rebuild chips
+  const chips = document.getElementById('category-chips');
+  chips.innerHTML = Array.from(cats).map(c =>
+    `<div class="chip${c === state.selectedCat ? ' active' : ''}"
+       data-cat="${escHtml(c)}" onclick="selectCat(this)">
+       ${c === 'all' ? 'ทั้งหมด' : escHtml(c)}</div>`
+  ).join('');
+
+  let filtered = state.products.filter(p => {
+    const matchQ = !q ||
+      (p.ProductName || '').toLowerCase().includes(q) ||
+      (p.ProductCode || '').toLowerCase().includes(q);
+    const matchCat = state.selectedCat === 'all' || p.Category === state.selectedCat;
+    return matchQ && matchCat;
+  });
+
+  const el = document.getElementById('product-list');
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>ไม่พบสินค้า</p></div>`;
+    return;
+  }
+  el.innerHTML = filtered.map(productCard).join('');
+}
+
+function productCard(p) {
+  const stock = +p.StockQty || 0;
+  const isLow = stock <= state.lowThreshold;
+  const cat   = p.Category || 'ไม่ระบุ';
+  const cats  = { 'อิเล็กทรอนิกส์':'⚡','อาหาร':'🍎','เสื้อผ้า':'👕','เครื่องดื่ม':'🥤' };
+  const icon  = cats[cat] || '📦';
+  const profit = (+p.SellingPrice || 0) - (+p.CostPrice || 0);
+  return `
+  <div class="product-item${isLow ? ' low-stock' : ''}">
+    <div class="product-avatar">${icon}</div>
+    <div class="product-info">
+      <div class="product-name">${escHtml(p.ProductName || '-')}</div>
+      <div class="product-code">${escHtml(p.ProductCode || '-')}</div>
+      <div class="product-meta">
+        <span class="badge ${isLow ? 'red' : 'green'}">📦 ${stock}</span>
+        <span class="badge blue">฿${(+p.SellingPrice || 0).toLocaleString()}</span>
+        ${profit > 0 ? `<span class="badge orange">+฿${profit.toLocaleString()}</span>` : ''}
+      </div>
+    </div>
+    <div class="product-actions">
+      <button class="act-btn stock" onclick="openStockModal('${escAttr(p.ProductCode)}')">±</button>
+      <button class="act-btn edit"  onclick="openProductModal('${escAttr(p.ProductCode)}')">✏️</button>
+      <button class="act-btn del"   onclick="confirmDelete('${escAttr(p.ProductCode)}')">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function selectCat(el) {
+  state.selectedCat = el.dataset.cat;
+  renderProducts();
+}
+
+// ---- STOCK LIST ----
+function renderStockList() {
+  const q = (document.getElementById('stock-search').value || '').toLowerCase();
+  let filtered = state.products.filter(p =>
+    !q || (p.ProductName || '').toLowerCase().includes(q) ||
+          (p.ProductCode || '').toLowerCase().includes(q)
+  );
+  const el = document.getElementById('stock-product-list');
+  if (!filtered.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📦</div><p>ไม่พบสินค้า</p></div>`;
+    return;
+  }
+  el.innerHTML = filtered.map(p => {
+    const stock = +p.StockQty || 0;
+    const isLow = stock <= state.lowThreshold;
+    return `
+    <div class="product-item${isLow ? ' low-stock' : ''}">
+      <div class="product-avatar">📦</div>
+      <div class="product-info">
+        <div class="product-name">${escHtml(p.ProductName || '-')}</div>
+        <div class="product-code">${escHtml(p.ProductCode || '-')}</div>
+        <div class="product-meta">
+          <span class="badge ${isLow ? 'red' : 'green'}">สต็อก: ${stock}</span>
+        </div>
+      </div>
+      <div class="product-actions">
+        <button class="act-btn stock" style="width:auto;padding:0 12px"
+          onclick="openStockModal('${escAttr(p.ProductCode)}')">อัปเดต</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ---- TRANSACTIONS ----
+function renderTransactions() {
+  let txs = state.transactions || [];
+  if (state.txFilter !== 'all') txs = txs.filter(t => t.Type === state.txFilter);
+  const el = document.getElementById('tx-list');
+  if (!txs.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><p>ยังไม่มีรายการ</p></div>`;
+    return;
+  }
+  el.innerHTML = txs.slice(0, 100).map(txCard).join('');
+}
+
+function txCard(t) {
+  const isIn  = (t.Type || '').toUpperCase() === 'IN';
+  const prod  = state.products.find(p => p.ProductCode === t.ProductCode);
+  const name  = prod ? prod.ProductName : t.ProductCode;
+  return `
+  <div class="tx-item">
+    <div class="tx-badge ${isIn ? 'in' : 'out'}">${isIn ? 'IN' : 'OUT'}</div>
+    <div class="tx-info">
+      <div class="tx-name">${escHtml(name || t.ProductCode || '-')}</div>
+      <div class="tx-date">${fmtDateTime(t.Date)} ${t.Note ? '· ' + escHtml(t.Note) : ''}</div>
+    </div>
+    <div class="tx-qty ${isIn ? 'in' : 'out'}">${isIn ? '+' : '-'}${t.Quantity}</div>
+  </div>`;
+}
+
+function filterTx(el) {
+  document.querySelectorAll('[data-tx-filter]').forEach(e => e.classList.remove('active'));
+  el.classList.add('active');
+  state.txFilter = el.dataset.txFilter;
+  renderTransactions();
+}
+
+/* =====================================================
+   PRODUCT MODAL
+===================================================== */
+function openProductModal(code = null) {
+  state.editingProductCode = code;
+  const modal = document.getElementById('product-modal');
+  const title = document.getElementById('product-modal-title');
+
+  if (code) {
+    const p = state.products.find(x => x.ProductCode === code);
+    if (!p) return;
+    title.textContent = '✏️ แก้ไขสินค้า';
+    document.getElementById('f-code').value     = p.ProductCode || '';
+    document.getElementById('f-name').value     = p.ProductName || '';
+    document.getElementById('f-category').value = p.Category || '';
+    document.getElementById('f-cost').value     = p.CostPrice || '';
+    document.getElementById('f-sell').value     = p.SellingPrice || '';
+    document.getElementById('f-stock').value    = p.StockQty || '';
+    document.getElementById('edit-product-code-original').value = code;
+    calcProfit();
+  } else {
+    title.textContent = '➕ เพิ่มสินค้า';
+    ['f-code','f-name','f-category','f-cost','f-sell','f-stock'].forEach(id =>
+      document.getElementById(id).value = '');
+    calcProfit();
+  }
+  openModal('product-modal');
+}
+
+function calcProfit() {
+  const cost  = +document.getElementById('f-cost').value || 0;
+  const sell  = +document.getElementById('f-sell').value || 0;
+  const prof  = sell - cost;
+  const pct   = sell > 0 ? ((prof / sell) * 100).toFixed(1) : 0;
+  document.getElementById('profit-val').textContent = '฿' + prof.toLocaleString();
+  document.getElementById('profit-val').style.color = prof >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('profit-pct').textContent = pct + '%';
+  document.getElementById('profit-bar').style.width = Math.min(100, Math.max(0, pct)) + '%';
+}
+
+async function saveProduct() {
+  const code = document.getElementById('f-code').value.trim();
+  const name = document.getElementById('f-name').value.trim();
+  if (!code || !name) { showToast('กรุณากรอกรหัสและชื่อสินค้า', 'warn'); return; }
+
+  const data = {
+    ProductCode:   code,
+    ProductName:   name,
+    Category:      document.getElementById('f-category').value.trim(),
+    CostPrice:     +document.getElementById('f-cost').value || 0,
+    SellingPrice:  +document.getElementById('f-sell').value || 0,
+    StockQty:      +document.getElementById('f-stock').value || 0,
+  };
+
+  showLoading(state.editingProductCode ? 'กำลังแก้ไข...' : 'กำลังบันทึก...');
+  const action = state.editingProductCode ? 'updateProduct' : 'addProduct';
+  if (state.editingProductCode) data.OriginalCode = state.editingProductCode;
+
+  const res = await apiCall(action, data);
+  hideLoading();
+
+  if (res || !state.apiUrl) {
+    // Update locally
+    if (state.editingProductCode) {
+      const idx = state.products.findIndex(p => p.ProductCode === state.editingProductCode);
+      if (idx !== -1) state.products[idx] = data;
+    } else {
+      // Check duplicate
+      if (state.products.find(p => p.ProductCode === code)) {
+        showToast('รหัสสินค้าซ้ำ', 'error'); return;
+      }
+      state.products.push(data);
+    }
+    Store.set('productsCache', { ts: Date.now(), data: state.products });
+    closeModal('product-modal');
+    renderAll();
+    showToast(state.editingProductCode ? 'แก้ไขสินค้าสำเร็จ ✓' : 'เพิ่มสินค้าสำเร็จ ✓');
+  }
+}
+
+/* =====================================================
+   STOCK MODAL
+===================================================== */
+function openStockModal(code) {
+  const p = state.products.find(x => x.ProductCode === code);
+  if (!p) return;
+  state.stockUpdateProduct = p;
+  document.getElementById('stock-modal-name').textContent = p.ProductName || '-';
+  document.getElementById('stock-modal-code').textContent = p.ProductCode || '-';
+  document.getElementById('stock-modal-qty').textContent  = p.StockQty || 0;
+  document.getElementById('update-qty').value  = 1;
+  document.getElementById('update-note').value = '';
+  setStockType('IN');
+  openModal('stock-modal');
+}
+
+function setStockType(t) {
+  state.stockType = t;
+  document.getElementById('type-in').className  = 'type-btn' + (t === 'IN'  ? ' active in'  : '');
+  document.getElementById('type-out').className = 'type-btn' + (t === 'OUT' ? ' active out' : '');
+}
+
+function adjustQty(delta) {
+  const el  = document.getElementById('update-qty');
+  const val = Math.max(1, (+el.value || 1) + delta);
+  el.value  = val;
+}
+
+async function confirmStockUpdate() {
+  const p   = state.stockUpdateProduct;
+  if (!p) return;
+  const qty  = +document.getElementById('update-qty').value || 0;
+  const note = document.getElementById('update-note').value.trim();
+  if (qty <= 0) { showToast('กรุณาระบุจำนวน', 'warn'); return; }
+
+  const curStock = +p.StockQty || 0;
+  if (state.stockType === 'OUT' && qty > curStock) {
+    showToast('สต็อกไม่เพียงพอ', 'error'); return;
+  }
+
+  showLoading('กำลังอัปเดตสต็อก...');
+  const res = await apiCall('updateStock', {
+    ProductCode: p.ProductCode,
+    Type: state.stockType,
+    Quantity: qty,
+    Note: note,
+  });
+  hideLoading();
+
+  if (res || !state.apiUrl) {
+    // Update locally
+    const newQty = state.stockType === 'IN' ? curStock + qty : curStock - qty;
+    const idx = state.products.findIndex(x => x.ProductCode === p.ProductCode);
+    if (idx !== -1) state.products[idx].StockQty = newQty;
+
+    // Add transaction locally
+    const tx = {
+      Date: new Date().toISOString(),
+      ProductCode: p.ProductCode,
+      Type: state.stockType,
+      Quantity: qty,
+      Note: note,
+    };
+    state.transactions.unshift(tx);
+    Store.set('productsCache', { ts: Date.now(), data: state.products });
+    Store.set('txCache', { ts: Date.now(), data: state.transactions });
+
+    closeModal('stock-modal');
+    renderAll();
+    showToast((state.stockType === 'IN' ? 'นำเข้าสต็อก' : 'จ่ายออกสต็อก') + ' สำเร็จ ✓');
+  }
+}
+
+/* =====================================================
+   DELETE PRODUCT
+===================================================== */
+function confirmDelete(code) {
+  const p = state.products.find(x => x.ProductCode === code);
+  document.getElementById('confirm-msg').textContent =
+    `ลบ "${p ? p.ProductName : code}" ออกจากระบบ? ไม่สามารถกู้คืนได้`;
+  document.getElementById('confirm-ok-btn').onclick = () => deleteProduct(code);
+  openModal('confirm-modal');
+}
+
+async function deleteProduct(code) {
+  showLoading('กำลังลบ...');
+  const res = await apiCall('deleteProduct', { ProductCode: code });
+  hideLoading();
+  if (res || !state.apiUrl) {
+    state.products = state.products.filter(p => p.ProductCode !== code);
+    Store.set('productsCache', { ts: Date.now(), data: state.products });
+    closeModal('confirm-modal');
+    renderAll();
+    showToast('ลบสินค้าสำเร็จ');
+  }
+}
+
+/* =====================================================
+   SCANNER
+===================================================== */
+function openScanner() {
+  openModal('scanner-modal');
+  startQrScanner();
+}
+
+function startQrScanner() {
+  if (state.qrScanner) return;
+  try {
+    state.qrScanner = new Html5Qrcode('qr-reader');
+    state.qrScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: { width: 200, height: 200 } },
+      (decodedText) => {
+        state.qrScanner.stop();
+        state.qrScanner = null;
+        closeModal('scanner-modal');
+        handleScanResult(decodedText);
+      },
+      (errorMsg) => {}
+    ).catch(err => {
+      showToast('ไม่สามารถเข้าถึงกล้อง: ' + err, 'error');
+    });
+  } catch (e) {
+    showToast('ไม่รองรับการสแกน', 'warn');
+  }
+}
+
+function closeScanner() {
+  if (state.qrScanner) {
+    state.qrScanner.stop().catch(() => {});
+    state.qrScanner = null;
+  }
+  closeModal('scanner-modal');
+}
+
+function manualScan() {
+  const code = document.getElementById('manual-scan-input').value.trim();
+  if (!code) return;
+  closeScanner();
+  handleScanResult(code);
+}
+
+function handleScanResult(code) {
+  const p = state.products.find(x => x.ProductCode === code);
+  if (p) {
+    openStockModal(code);
+    showToast(`พบสินค้า: ${p.ProductName}`);
+  } else {
+    // Prefill new product
+    navTo('products');
+    setTimeout(() => openProductModal(), 200);
+    setTimeout(() => { document.getElementById('f-code').value = code; }, 300);
+    showToast('ไม่พบสินค้า ระบุรหัส: ' + code, 'warn');
+  }
+}
+
+/* =====================================================
+   SETTINGS
+===================================================== */
+function saveApiUrl() {
+  const url = document.getElementById('api-url-input').value.trim();
+  state.apiUrl = url;
+  Store.set('apiUrl', url);
+  showToast('บันทึก API URL สำเร็จ ✓');
+  if (url) refreshData();
+}
+
+function changePin() {
+  const np = document.getElementById('new-pin').value;
+  const cp = document.getElementById('confirm-pin').value;
+  if (np.length !== 4 || !/^\d{4}$/.test(np)) { showToast('PIN ต้องเป็นตัวเลข 4 หลัก', 'warn'); return; }
+  if (np !== cp) { showToast('PIN ไม่ตรงกัน', 'error'); return; }
+  Store.set('pin', np);
+  document.getElementById('new-pin').value = '';
+  document.getElementById('confirm-pin').value = '';
+  showToast('เปลี่ยน PIN สำเร็จ ✓');
+}
+
+function saveLowThreshold() {
+  state.lowThreshold = +document.getElementById('low-stock-threshold').value || 10;
+  Store.set('lowThreshold', state.lowThreshold);
+  renderDashboard();
+}
+
+function clearCache() {
+  ['productsCache','txCache'].forEach(k => Store.rm(k));
+  state.products = []; state.transactions = [];
+  renderAll();
+  showToast('ล้าง Cache สำเร็จ');
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify({ products: state.products, transactions: state.transactions }, null, 2)], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+  a.download = 'stockify-export-' + new Date().toISOString().slice(0, 10) + '.json';
+  a.click();
+}
+
+/* =====================================================
+   NAVIGATION
+===================================================== */
+function navTo(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  document.getElementById('nav-'  + page).classList.add('active');
+  state.currentPage = page;
+}
+
+/* =====================================================
+   MODAL HELPERS
+===================================================== */
+function openModal(id) {
+  document.getElementById(id).classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeModal(id) {
+  document.getElementById(id).classList.remove('open');
+  document.body.style.overflow = '';
+}
+// Close modal on overlay click
+document.querySelectorAll('.modal-overlay').forEach(ov => {
+  ov.addEventListener('click', e => { if (e.target === ov) { closeScanner(); closeModal(ov.id); } });
+});
+
+/* =====================================================
+   TOAST
+===================================================== */
+function showToast(msg, type = 'success') {
+  const icons = { success: '✅', error: '❌', warn: '⚠️' };
+  const el = document.createElement('div');
+  el.className = `toast${type !== 'success' ? ' ' + type : ''}`;
+  el.innerHTML = `<span class="toast-icon">${icons[type]}</span><span>${escHtml(msg)}</span>`;
+  document.getElementById('toast-container').appendChild(el);
+  setTimeout(() => el.remove(), 3200);
+}
+
+/* =====================================================
+   UTILS
+===================================================== */
+function escHtml(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function escAttr(s)  { return String(s||'').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+function fmtDate(ds) {
+  if (!ds) return '';
+  try { return new Date(ds).toLocaleDateString('th-TH', { day:'numeric', month:'short' }); }
+  catch { return ds; }
+}
+function fmtDateTime(ds) {
+  if (!ds) return '';
+  try { return new Date(ds).toLocaleString('th-TH', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }); }
+  catch { return ds; }
+}
+</script>
+
+</body>
+</html>
