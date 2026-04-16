@@ -410,8 +410,9 @@ select.fi option{background:var(--s2);}
 
       <div class="card">
         <div style="font-size:.75rem;font-weight:700;color:var(--txt2);margin-bottom:11px">🔗 Google Sheets API</div>
+        <!-- ▼▼▼ URL ของ Google Apps Script — แก้ใน CFG.GAS_URL (บรรทัดแรกของ JS) หรือกรอกที่นี่ ▼▼▼ -->
         <div class="fg">
-          <label class="fl">Web App URL</label>
+          <label class="fl">Web App URL <span style="color:var(--acc);font-size:.68rem">(แก้ถาวรได้ใน CFG.GAS_URL ในโค้ด)</span></label>
           <input type="url" class="fi" id="api-url" placeholder="https://script.google.com/macros/s/.../exec"/>
         </div>
         <button class="btn pr fu" onclick="saveApi()">💾 บันทึกและเชื่อมต่อ</button>
@@ -614,8 +615,30 @@ select.fi option{background:var(--s2);}
 <div id="ld"><div class="spin"></div><div class="lm" id="lm">กำลังโหลด...</div></div>
 
 <script>
-/* ---- STATE ---- */
-const CFG={PIN:'1234',LOW:10};
+/* ================================================================
+   ⚙️  CONFIG — แก้ไขค่าตั้งต้นที่นี่
+   ================================================================
+   🔗 GAS_URL  : URL ของ Google Apps Script Web App
+                  → Deploy ใหม่ทุกครั้งที่แก้โค้ด Code.gs
+                  → ต้องตั้ง "Who has access" = Anyone
+
+   🔑 DEFAULT_PIN : PIN เริ่มต้นสำหรับล็อกอิน (4 หลัก)
+
+   📦 DEFAULT_LOW  : จำนวนสต็อกขั้นต่ำที่จะแจ้งเตือน (ชิ้น)
+   ================================================================ */
+const CFG={
+  /* ▼▼▼ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▼▼▼ */
+  GAS_URL:'https://script.google.com/macros/s/AKfycbxQ8NQUxf8wyeWU255ge0GQwq4ooBFgaVqz1EumgZOHaybHHbzcC68nwoxrNk-AMb6u/exec',
+  /* ▲▲▲ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▲▲▲ */
+
+  /* ▼ แก้ PIN เริ่มต้น (4 หลัก) ▼ */
+  PIN:'1234',
+  /* ▲ แก้ PIN เริ่มต้น ▲ */
+
+  /* ▼ แจ้งเตือนเมื่อสต็อกน้อยกว่าจำนวนนี้ ▼ */
+  LOW:10
+  /* ▲ แก้ threshold สต็อกต่ำ ▲ */
+};
 const S={
   products:[],transactions:[],sales:[],cart:[],
   images:{},apiUrl:'',page:'dashboard',
@@ -660,10 +683,18 @@ function init(){
   S.transactions=DB.g('transactions',[]);
   S.sales       =DB.g('sales',[]);
   S.images      =DB.g('images',{});
-  S.apiUrl      =DB.g('apiUrl','');
+
+  /* ----------------------------------------------------------------
+     🔗 API URL Logic (Offline-First):
+     1. ใช้ค่าที่ user บันทึกไว้ใน localStorage ก่อน (ถ้ามี)
+     2. ถ้ายังไม่เคยตั้ง → ใช้ค่า CFG.GAS_URL ที่ฝังไว้ในโค้ด
+     แก้ CFG.GAS_URL ด้านบนเพื่อเปลี่ยน URL โดยไม่ต้องกรอกทุกครั้ง
+  ---------------------------------------------------------------- */
+  S.apiUrl = DB.g('apiUrl', null) ?? CFG.GAS_URL;
+
   S.lastSync    =DB.g('lastSync',null);
   const sc=DB.g('cfg',{});Object.assign(S.cfg,sc);
-  // Restore settings UI
+  // Restore settings UI — แสดง URL ที่ใช้งานอยู่ในช่อง input
   document.getElementById('api-url').value=S.apiUrl;
   document.getElementById('sn').value=S.cfg.sn;
   document.getElementById('sa').value=S.cfg.sa;
@@ -688,6 +719,18 @@ function updSyncUI(){
 function showL(m='กำลังโหลด...'){document.getElementById('lm').textContent=m;document.getElementById('ld').classList.add('sh');}
 function hideL(){document.getElementById('ld').classList.remove('sh');}
 
+/* ================================================================
+   📡 API LAYER — ติดต่อ Google Apps Script
+   ================================================================
+   • GET  → action ที่ขึ้นต้นด้วย "get..." (getProducts, ฯลฯ)
+   • POST → action อื่นๆ (addProduct, updateStock, createSale ฯลฯ)
+   • ทุก call มี timeout 10 วินาที
+   • ถ้า network ล้มเหลว → return null และ UI ยังทำงานต่อได้ (offline)
+
+   ▼ Actions ที่ต้องมีใน Code.gs (Google Apps Script):
+     getProducts | addProduct | updateProduct | deleteProduct
+     updateStock | getTransactions | getSales | createSale
+   ================================================================ */
 async function api(action,data={}){
   if(!S.apiUrl)return null;
   try{
@@ -1102,6 +1145,11 @@ function handleScan(code){
 }
 
 /* ---- SETTINGS ---- */
+/* ----------------------------------------------------------------
+   💾 saveApi — เรียกเมื่อ user กด "บันทึกและเชื่อมต่อ" ในหน้าตั้งค่า
+   ค่าที่บันทึกจะ override CFG.GAS_URL จนกว่าจะ clearStorage
+   หากต้องการเปลี่ยน URL ถาวร → แก้ CFG.GAS_URL ด้านบนแทน
+---------------------------------------------------------------- */
 function saveApi(){const u=document.getElementById('api-url').value.trim();S.apiUrl=u;DB.s('apiUrl',u);showToast('บันทึก URL แล้ว');if(u)bgSync();else updSyncUI();}
 function saveReceipt(){S.cfg.sn=document.getElementById('sn').value;S.cfg.sa=document.getElementById('sa').value;S.cfg.rf=document.getElementById('rf').value;S.cfg.cn=document.getElementById('cn').value;DB.s('cfg',S.cfg);showToast('บันทึกข้อมูลร้านสำเร็จ ✓');}
 function saveGen(){S.cfg.low=+document.getElementById('lt').value||10;DB.s('cfg',S.cfg);showToast('บันทึกสำเร็จ ✓');renderDash();}
