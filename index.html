@@ -446,7 +446,10 @@ select.fi option{background:var(--s2);}
           <label class="fl">Web App URL <span style="color:var(--acc);font-size:.68rem">(แก้ถาวรได้ใน CFG.GAS_URL ในโค้ด)</span></label>
           <input type="url" class="fi" id="api-url" placeholder="https://script.google.com/macros/s/.../exec"/>
         </div>
-        <button class="btn pr fu" onclick="saveApi()">💾 บันทึกและเชื่อมต่อ</button>
+        <div style="display:grid;grid-template-columns:1fr auto;gap:7px">
+          <button class="btn pr fu" onclick="saveApi()">💾 บันทึกและเชื่อมต่อ</button>
+          <button class="btn sc2" onclick="testApi()" title="ทดสอบการเชื่อมต่อ">🔬 ทดสอบ</button>
+        </div>
         <div style="margin-top:7px;font-size:.72rem;color:var(--acc)" id="api-stat">⚡ โหมดออฟไลน์</div>
       </div>
 
@@ -659,7 +662,7 @@ select.fi option{background:var(--s2);}
    ================================================================ */
 const CFG={
   /* ▼▼▼ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▼▼▼ */
-  GAS_URL:'https://script.google.com/macros/s/AKfycbwtihjK8QYsEJxyl5ugfWFlxdT2dBIOEZKvtOAJEoKLg_YFXMBvVkM-eGPypQ2MHpsr7g/exec',
+  GAS_URL:'https://script.google.com/macros/s/AKfycbxQ8NQUxf8wyeWU255ge0GQwq4ooBFgaVqz1EumgZOHaybHHbzcC68nwoxrNk-AMb6u/exec',
   /* ▲▲▲ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▲▲▲ */
 
   /* ▼ แก้ PIN เริ่มต้น (4 หลัก) ▼ */
@@ -730,7 +733,12 @@ function init(){
      2. ถ้ายังไม่เคยตั้ง → ใช้ค่า CFG.GAS_URL ที่ฝังไว้ในโค้ด
      แก้ CFG.GAS_URL ด้านบนเพื่อเปลี่ยน URL โดยไม่ต้องกรอกทุกครั้ง
   ---------------------------------------------------------------- */
-  S.apiUrl      = DB.g('apiUrl', null) ?? CFG.GAS_URL;
+  /* ── API URL Priority ──────────────────────────────────────────
+     1. ถ้า localStorage มี URL ที่ถูกต้อง → ใช้นั้น
+     2. ถ้า localStorage ว่าง / ไม่มี → ใช้ CFG.GAS_URL ที่ฝังในโค้ด
+     ── ▼ แก้ CFG.GAS_URL ด้านบนเพื่อเปลี่ยน default ▼ ──────── */
+  const _savedUrl = DB.g('apiUrl', null);
+  S.apiUrl = (_savedUrl && _savedUrl.startsWith('http')) ? _savedUrl : CFG.GAS_URL;
   S.lastSync    = DB.g('lastSync', null);
   /* โหลด pending queue — รายการที่ยังไม่ได้ sync */
   S.pendingQ    = DB.g('pendingQ', []);
@@ -790,23 +798,60 @@ function hideL(){document.getElementById('ld').classList.remove('sh');}
      getProducts | addProduct | updateProduct | deleteProduct
      updateStock | getTransactions | getSales | createSale
    ================================================================ */
-async function api(action,data={}){
-  if(!S.apiUrl)return null;
+/* ================================================================
+   🔧 CORS FIX — ทำไมถึงใช้ text/plain?
+   ================================================================
+   - application/json  → browser ส่ง OPTIONS preflight ก่อน
+   - GAS ไม่รองรับ OPTIONS request → preflight ล้มเหลว → POST ไม่ถูกส่ง
+   - text/plain        → "Simple Request" → ไม่มี preflight → ผ่านทุกครั้ง
+   - GAS อ่าน e.postData.contents ได้ปกติ ไม่ว่า content-type จะเป็นอะไร
+   ================================================================
+   ▼▼▼ แก้ไขจุดนี้ถ้าต้องการเปลี่ยน timeout หรือ method ▼▼▼ */
+async function api(action, data={}){
+  if(!S.apiUrl) return null;
+
+  // Timeout helper (รองรับทุก browser รวม iOS Safari เก่า)
+  const ctrl = new AbortController();
+  const tid  = setTimeout(()=>ctrl.abort(), 12000); // ▼ แก้ timeout (ms) ที่นี่
+
   try{
-    const url=new URL(S.apiUrl);
     let r;
+
     if(action.startsWith('get')){
-      url.searchParams.set('action',action);
-      Object.entries(data).forEach(([k,v])=>url.searchParams.set(k,v));
-      r=await fetch(url.toString(),{signal:AbortSignal.timeout(10000)});
-    }else{
-      r=await fetch(url.toString(),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,...data}),signal:AbortSignal.timeout(10000)});
+      /* ── GET request (ดึงข้อมูล) ──────────────────────────── */
+      const url = new URL(S.apiUrl);
+      url.searchParams.set('action', action);
+      Object.entries(data).forEach(([k,v])=>{
+        if(v!==null && v!==undefined) url.searchParams.set(k, String(v));
+      });
+      r = await fetch(url.toString(), {signal: ctrl.signal});
+
+    } else {
+      /* ── POST request (เขียนข้อมูล) ───────────────────────── */
+      /* ⚠️ ต้องใช้ 'text/plain' ไม่ใช่ 'application/json'
+         เพื่อหลีกเลี่ยง CORS preflight ที่ GAS ไม่รองรับ    */
+      r = await fetch(S.apiUrl, {
+        method:  'POST',
+        headers: {'Content-Type': 'text/plain;charset=utf-8'},
+        body:    JSON.stringify({action, ...data}),
+        signal:  ctrl.signal,
+      });
     }
-    const j=await r.json();
-    if(j.status==='error')throw new Error(j.message);
+
+    clearTimeout(tid);
+    const text = await r.text();          // อ่านเป็น text ก่อน (ป้องกัน parse error)
+    const j    = JSON.parse(text);
+    if(j.status === 'error') throw new Error(j.message);
     return j;
-  }catch(e){
-    console.warn('API ['+action+'] failed:',e.message);
+
+  } catch(e) {
+    clearTimeout(tid);
+    const reason = e.name==='AbortError' ? 'timeout' : e.message;
+    console.warn('[API FAIL]', action, '→', reason);
+    /* แสดง toast เตือนถ้า error ไม่ใช่ abort (ไม่ spam เมื่อ offline) */
+    if(e.name!=='AbortError' && S.apiUrl){
+      console.error('กรุณาตรวจสอบ: 1) API URL ถูกต้อง 2) Deploy เป็น "Anyone" 3) ไม่ใช่ Private');
+    }
     return null;
   }
 }
@@ -1458,11 +1503,63 @@ function handleScan(code){
 
 /* ---- SETTINGS ---- */
 /* ----------------------------------------------------------------
-   💾 saveApi — เรียกเมื่อ user กด "บันทึกและเชื่อมต่อ" ในหน้าตั้งค่า
-   ค่าที่บันทึกจะ override CFG.GAS_URL จนกว่าจะ clearStorage
-   หากต้องการเปลี่ยน URL ถาวร → แก้ CFG.GAS_URL ด้านบนแทน
+   💾 saveApi — บันทึก URL + ทดสอบการเชื่อมต่อทันที
 ---------------------------------------------------------------- */
-function saveApi(){const u=document.getElementById('api-url').value.trim();S.apiUrl=u;DB.s('apiUrl',u);showToast('บันทึก URL แล้ว');if(u)bgSync();else updSyncUI();}
+function saveApi(){
+  const u=document.getElementById('api-url').value.trim();
+  if(u && !u.startsWith('http')){ showToast('URL ไม่ถูกต้อง','er'); return; }
+  S.apiUrl=u;
+  DB.s('apiUrl',u);
+  showToast('บันทึก URL แล้ว');
+  if(u) bgSync(); else updSyncUI();
+}
+
+/* ----------------------------------------------------------------
+   🔬 testApi — ทดสอบ GET + POST แยกกัน เพื่อ debug ปัญหา CORS
+---------------------------------------------------------------- */
+async function testApi(){
+  const u = document.getElementById('api-url').value.trim() || S.apiUrl;
+  if(!u){ showToast('กรุณากรอก URL ก่อน','wa'); return; }
+
+  const statEl = document.getElementById('api-stat');
+  statEl.textContent = '🔄 กำลังทดสอบ...'; statEl.style.color='var(--acc)';
+
+  // ── TEST 1: GET (getProducts) ──
+  try {
+    const gUrl = new URL(u);
+    gUrl.searchParams.set('action','getProducts');
+    const gr = await fetch(gUrl.toString(), {signal: (new AbortController()).signal});
+    const gj = await gr.json();
+    if(gj.status==='ok'){
+      showToast('✅ GET สำเร็จ · พบ '+( gj.data||[]).length+' สินค้า');
+    } else {
+      showToast('⚠️ GET error: '+gj.message,'wa');
+    }
+  } catch(e){ showToast('❌ GET ล้มเหลว: '+e.message,'er'); }
+
+  // ── TEST 2: POST (echo test) ──
+  await new Promise(r=>setTimeout(r,500));
+  try {
+    const pr = await fetch(u, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'},
+      body: JSON.stringify({action:'getProducts'}), // ใช้ getProducts เพื่อ test POST path
+    });
+    const pj = await pr.json();
+    if(pj.status==='ok'){
+      statEl.textContent = '✅ GET + POST ทำงานปกติ';
+      statEl.style.color = 'var(--grn)';
+      showToast('✅ POST สำเร็จ — API พร้อมใช้งาน');
+    } else {
+      statEl.textContent = '⚠️ POST error: '+pj.message;
+      statEl.style.color = 'var(--acc)';
+    }
+  } catch(e){
+    statEl.textContent = '❌ POST ล้มเหลว: '+e.message;
+    statEl.style.color = 'var(--red)';
+    showToast('❌ POST ล้มเหลว — ตรวจสอบ CORS / Deploy','er');
+  }
+}
 function saveReceipt(){S.cfg.sn=document.getElementById('sn').value;S.cfg.sa=document.getElementById('sa').value;S.cfg.rf=document.getElementById('rf').value;S.cfg.cn=document.getElementById('cn').value;DB.s('cfg',S.cfg);showToast('บันทึกข้อมูลร้านสำเร็จ ✓');}
 function saveGen(){S.cfg.low=+document.getElementById('lt').value||10;DB.s('cfg',S.cfg);showToast('บันทึกสำเร็จ ✓');renderDash();}
 function toggleAP(){S.cfg.ap=!S.cfg.ap;document.getElementById('ap-tgl').classList.toggle('on',S.cfg.ap);DB.s('cfg',S.cfg);}
