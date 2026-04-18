@@ -325,34 +325,65 @@ select.fi option{background:var(--s2);}
     <span id="stxt" style="font-size:.68rem;color:var(--txt2)">ออฟไลน์</span>
     <div class="sp"></div>
     <button class="ibtn" onclick="openScanner()">📷</button>
-    <button class="ibtn" onclick="refreshData()">🔄</button>
+    <button class="ibtn" onclick="refreshData()" title="รีเฟรช">🔄</button>
+    <!-- ⏳ pending sync badge — แสดงเมื่อมี operation รอ sync -->
+    <div id="pending-count" style="display:none;font-size:.62rem;color:var(--acc);font-weight:700;padding:2px 7px;background:rgba(245,158,11,.12);border-radius:10px;white-space:nowrap"></div>
   </div>
 
   <div class="content">
     <!-- DASHBOARD -->
     <div class="page ac" id="page-dashboard">
+
+      <!-- Today summary row -->
       <div class="trow">
         <div class="tc"><div class="tv" id="td-rev" style="color:var(--acc)">฿0</div><div class="tl">ยอดขายวันนี้</div></div>
         <div class="tc"><div class="tv" id="td-cnt" style="color:var(--blu)">0</div><div class="tl">รายการขาย</div></div>
         <div class="tc"><div class="tv" id="td-prf" style="color:var(--grn)">฿0</div><div class="tl">กำไรวันนี้</div></div>
       </div>
+
+      <!-- Stats Grid -->
       <div class="sg">
         <div class="sc c1"><div class="sic">📦</div><div class="sv" id="sp">0</div><div class="sl">สินค้าทั้งหมด</div></div>
         <div class="sc c2"><div class="sic">📊</div><div class="sv" id="ss">0</div><div class="sl">สต็อกรวม (ชิ้น)</div></div>
         <div class="sc c3"><div class="sic">💰</div><div class="sv" id="sv" style="font-size:.95rem">฿0</div><div class="sl">มูลค่าสต็อก</div></div>
         <div class="sc c4"><div class="sic">⚠️</div><div class="sv" id="sl">0</div><div class="sl">สต็อกต่ำ</div></div>
       </div>
+
+      <!-- Low stock alerts -->
       <div id="alts"></div>
-      <div class="card">
-        <div class="sh">
-          <div class="st">📈 ยอดขาย 7 วันล่าสุด</div>
-          <span class="bg g" id="cht-tot">฿0</span>
+
+      <!-- ===== SALES CHART CARD ===== -->
+      <div class="card" style="padding:14px">
+        <!-- Chart mode tabs -->
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div class="st">📈 ยอดขาย</div>
+          <div style="display:flex;gap:4px" id="chart-tabs">
+            <button class="chip ac" id="ct-7d"   onclick="setChartMode('7d',this)"  style="padding:4px 10px;font-size:.68rem">7 วัน</button>
+            <button class="chip"    id="ct-30d"  onclick="setChartMode('30d',this)" style="padding:4px 10px;font-size:.68rem">30 วัน</button>
+            <button class="chip"    id="ct-cat"  onclick="setChartMode('cat',this)" style="padding:4px 10px;font-size:.68rem">หมวดหมู่</button>
+          </div>
         </div>
-        <div class="chart-box">
-          <svg class="chart-svg" id="chart" viewBox="0 0 300 90" preserveAspectRatio="xMidYMid meet" style="overflow:visible"></svg>
+        <!-- Summary row -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap" id="chart-summary"></div>
+        <!-- SVG Chart -->
+        <div class="chart-box" style="position:relative;min-height:110px">
+          <svg id="chart" viewBox="0 0 300 100" preserveAspectRatio="xMidYMid meet" style="width:100%;overflow:visible;display:block"></svg>
+          <div id="chart-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;flex-direction:column;color:var(--txt3);font-size:.78rem;gap:6px"><span style="font-size:1.6rem;opacity:.3">📊</span>ยังไม่มีข้อมูลการขาย</div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:5px" id="cht-lbs"></div>
+        <!-- X-axis labels -->
+        <div style="display:flex;justify-content:space-between;margin-top:5px;padding:0 2px" id="cht-lbs"></div>
       </div>
+
+      <!-- Best selling products -->
+      <div class="card" style="padding:14px">
+        <div class="sh" style="margin-bottom:10px">
+          <div class="st">🏆 สินค้าขายดี</div>
+          <span class="bg o" id="bsp-period">7 วัน</span>
+        </div>
+        <div id="best-sellers"></div>
+      </div>
+
+      <!-- Recent sales -->
       <div class="sh">
         <div class="st">🧾 การขายล่าสุด</div>
         <button class="btn sc2 sm" onclick="navTo('history')">ดูทั้งหมด</button>
@@ -628,7 +659,7 @@ select.fi option{background:var(--s2);}
    ================================================================ */
 const CFG={
   /* ▼▼▼ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▼▼▼ */
-  GAS_URL:'https://script.google.com/macros/s/AKfycby3CQ3Ddp0tJVz4RfCzqGgTP68HrUEHv2fc_ULNz9D4_c5wo4LHPIwiR0egBtl1ViGy_A/exec',
+  GAS_URL:'https://script.google.com/macros/s/AKfycbxQ8NQUxf8wyeWU255ge0GQwq4ooBFgaVqz1EumgZOHaybHHbzcC68nwoxrNk-AMb6u/exec',
   /* ▲▲▲ แก้ URL ตรงนี้เมื่อ Deploy Google Apps Script ใหม่ ▲▲▲ */
 
   /* ▼ แก้ PIN เริ่มต้น (4 หลัก) ▼ */
@@ -645,7 +676,16 @@ const S={
   selCat:'all',posCat:'all',histF:'all',
   stProd:null,stType:'IN',editCode:null,pendImg:null,
   cfg:{sn:'STOCKIFY SHOP',sa:'',rf:'ขอบคุณที่ใช้บริการ 🙏',cn:'',ap:false,low:10},
-  qr:null,lastSync:null
+  qr:null,lastSync:null,
+  /* ----------------------------------------------------------------
+     📬 PENDING SYNC QUEUE
+     ทุก write (add/update/delete/stock/sale) → push เข้า pendingQ
+     flushQueue() จะ loop ส่งไป Google Sheets ทีละรายการ
+     ถ้า API ล้มเหลว → item ยังอยู่ใน queue รอ retry ครั้งต่อไป
+     bgSync() จะ flushQueue() ก่อน pull เสมอ เพื่อไม่ให้ data หาย
+  ---------------------------------------------------------------- */
+  pendingQ:[],
+  flushing:false
 };
 
 /* ---- DB ---- */
@@ -690,9 +730,10 @@ function init(){
      2. ถ้ายังไม่เคยตั้ง → ใช้ค่า CFG.GAS_URL ที่ฝังไว้ในโค้ด
      แก้ CFG.GAS_URL ด้านบนเพื่อเปลี่ยน URL โดยไม่ต้องกรอกทุกครั้ง
   ---------------------------------------------------------------- */
-  S.apiUrl = DB.g('apiUrl', null) ?? CFG.GAS_URL;
-
-  S.lastSync    =DB.g('lastSync',null);
+  S.apiUrl      = DB.g('apiUrl', null) ?? CFG.GAS_URL;
+  S.lastSync    = DB.g('lastSync', null);
+  /* โหลด pending queue — รายการที่ยังไม่ได้ sync */
+  S.pendingQ    = DB.g('pendingQ', []);
   const sc=DB.g('cfg',{});Object.assign(S.cfg,sc);
   // Restore settings UI — แสดง URL ที่ใช้งานอยู่ในช่อง input
   document.getElementById('api-url').value=S.apiUrl;
@@ -703,16 +744,34 @@ function init(){
   document.getElementById('lt').value=S.cfg.low;
   if(S.cfg.ap)document.getElementById('ap-tgl').classList.add('on');
   updSyncUI();renderAll();
-  if(S.apiUrl)bgSync();
+  /* เริ่ม sync: flush pending ก่อน แล้วค่อย pull */
+  if(S.apiUrl){
+    if(S.pendingQ.length>0){
+      showToast('⏳ มีรายการรอซิงค์ '+S.pendingQ.length+' รายการ กำลังส่ง...','wa');
+      bgSync(); // bgSync จะ flushQueue ก่อน pull อัตโนมัติ
+    } else {
+      bgSync();
+    }
+  }
 }
 
 /* ---- SYNC UI ---- */
-function updSyncUI(){
+function updSyncUI(mode){
   const d=document.getElementById('sdot'),t=document.getElementById('stxt'),ls=document.getElementById('ls-lbl');
   const as=document.getElementById('api-stat');
-  if(S.apiUrl){d.className='sdot on';t.textContent='เชื่อมต่อแล้ว';as.textContent='✅ API เชื่อมต่อสำเร็จ';as.style.color='var(--grn)';}
-  else{d.className='sdot';t.textContent='ออฟไลน์';as.textContent='⚡ โหมดออฟไลน์ — บันทึกในเครื่อง';as.style.color='var(--acc)';}
+  if(mode==='syncing'){d.className='sdot sy';t.textContent='กำลังซิงค์...';return;}
+  if(S.apiUrl){
+    d.className='sdot on';
+    const pn=S.pendingQ.length;
+    t.textContent=pn>0?'⏳ รอซิงค์ '+pn:'เชื่อมต่อแล้ว';
+    as.textContent='✅ API เชื่อมต่อสำเร็จ'+(pn>0?' · รอซิงค์ '+pn+' รายการ':'');
+    as.style.color=pn>0?'var(--acc)':'var(--grn)';
+  } else {
+    d.className='sdot';t.textContent='ออฟไลน์';
+    as.textContent='⚡ โหมดออฟไลน์ — บันทึกในเครื่อง';as.style.color='var(--acc)';
+  }
   if(S.lastSync)ls.textContent='Sync ล่าสุด: '+fDT(S.lastSync);
+  updPendingBadge();
 }
 
 /* ---- API ---- */
@@ -749,14 +808,82 @@ async function api(action,data={}){
   }catch(e){console.warn('API:',e.message);return null;}
 }
 
+/* ================================================================
+   📬 QUEUE SYNC — เพิ่ม operation เข้า pending queue แล้ว flush ทันที
+   ใช้แทนการเรียก api() โดยตรงสำหรับทุก write operation
+================================================================ */
+function queueSync(action, data){
+  // เพิ่มเข้า queue พร้อม unique id
+  const op={id:Date.now()+'_'+Math.random().toString(36).slice(2,6), action, data, ts:new Date().toISOString(), retries:0};
+  S.pendingQ.push(op);
+  DB.s('pendingQ', S.pendingQ);
+  updPendingBadge();
+  // พยายาม flush ทันที (non-blocking)
+  if(S.apiUrl) flushQueue();
+}
+
+/* ================================================================
+   🔄 FLUSH QUEUE — ส่ง pending operations ไปยัง Google Sheets
+   เรียงตาม timestamp (เก่าสุดก่อน) เพื่อรักษาลำดับ
+   ถ้า API ล้มเหลว → คง item ไว้ใน queue (retry ครั้งหน้า)
+================================================================ */
+async function flushQueue(){
+  if(!S.apiUrl || S.flushing || !S.pendingQ.length) return;
+  S.flushing=true;
+  updSyncUI('syncing');
+  // เรียงตาม timestamp
+  const batch=[...S.pendingQ].sort((a,b)=>a.ts.localeCompare(b.ts));
+  let successCount=0, failCount=0;
+  for(const op of batch){
+    const res=await api(op.action, op.data);
+    if(res!==null){
+      // ✅ สำเร็จ — ลบออกจาก queue
+      S.pendingQ=S.pendingQ.filter(x=>x.id!==op.id);
+      DB.s('pendingQ', S.pendingQ);
+      successCount++;
+    } else {
+      // ❌ ล้มเหลว — เพิ่ม retry count (จะลองใหม่ครั้งหน้า)
+      const idx=S.pendingQ.findIndex(x=>x.id===op.id);
+      if(idx!==-1){ S.pendingQ[idx].retries=(S.pendingQ[idx].retries||0)+1; DB.s('pendingQ',S.pendingQ); }
+      failCount++;
+    }
+  }
+  S.flushing=false;
+  updPendingBadge();
+  updSyncUI(S.apiUrl?'online':'offline');
+  if(successCount>0) showToast('ซิงค์ '+successCount+' รายการสำเร็จ ✓','in');
+  if(failCount>0) showToast('ซิงค์ล้มเหลว '+failCount+' รายการ (จะลองใหม่)','wa');
+}
+
+/* แสดงจำนวน pending items บน status bar */
+function updPendingBadge(){
+  const n=S.pendingQ.length;
+  const el=document.getElementById('pending-count');
+  if(el){ el.textContent=n>0?'⏳ รอซิงค์ '+n+' รายการ':''; el.style.display=n>0?'block':'none'; }
+}
+
+/* ================================================================
+   🔁 BG SYNC — แก้ไขให้ flushQueue ก่อน แล้วค่อย pull
+   เหตุผล: ถ้า pull ก่อน จะ overwrite local data ที่ยังไม่ได้ sync
+================================================================ */
 async function bgSync(){
   const d=document.getElementById('sdot');d.className='sdot sy';
+  document.getElementById('stxt').textContent='กำลังซิงค์...';
+
+  /* STEP 1: ส่ง pending operations ขึ้น Sheets ก่อน */
+  if(S.pendingQ.length>0){
+    await flushQueue();
+    // รอสักครู่ให้ Sheets บันทึกสำเร็จก่อน pull
+    await new Promise(r=>setTimeout(r,600));
+  }
+
+  /* STEP 2: ดึงข้อมูลล่าสุดจาก Sheets (หลัง push แล้ว) */
   const [p,t,s]=await Promise.all([api('getProducts'),api('getTransactions'),api('getSales')]);
   if(p){S.products=p.data||[];DB.s('products',S.products);}
   if(t){S.transactions=t.data||[];DB.s('transactions',S.transactions);}
   if(s){S.sales=s.data||[];DB.s('sales',S.sales);}
   S.lastSync=new Date().toISOString();DB.s('lastSync',S.lastSync);
-  d.className='sdot on';updSyncUI();renderAll();
+  d.className='sdot on';updSyncUI('online');renderAll();
   showToast('ซิงค์ข้อมูลสำเร็จ ✓','in');
 }
 
@@ -768,9 +895,20 @@ async function refreshData(){
 /* ---- RENDER ALL ---- */
 function renderAll(){renderDash();renderPOS();renderProds();renderHist();}
 
-/* ---- DASHBOARD ---- */
+/* ================================================================
+   📊 DASHBOARD — chart mode: '7d' | '30d' | 'cat'
+================================================================ */
+let _chartMode='7d';
+function setChartMode(mode, el){
+  _chartMode=mode;
+  document.querySelectorAll('#chart-tabs .chip').forEach(c=>c.classList.remove('ac'));
+  if(el) el.classList.add('ac');
+  renderChart();
+  renderBestSellers();
+}
+
 function renderDash(){
-  const p=S.products,today=new Date().toISOString().slice(0,10);
+  const p=S.products, today=new Date().toISOString().slice(0,10);
   const ts=S.sales.filter(s=>(s.Date||'').startsWith(today));
   const rev=ts.reduce((a,s)=>a+(+s.Total||0),0);
   const prf=ts.reduce((a,s)=>a+(+s.Profit||0),0);
@@ -786,32 +924,158 @@ function renderDash(){
     <div class="ali">⚠️ <span><b>${e(x.ProductName)}</b> เหลือ <b>${x.StockQty}</b> ชิ้น
     <button class="btn sc2 sm" style="padding:3px 9px;font-size:.68rem;margin-left:7px" onclick="openStockM('${e(x.ProductCode)}')">เติม</button></span></div>`).join('');
   renderChart();
+  renderBestSellers();
   const rs=document.getElementById('rec-sales');
   const rc=S.sales.slice().reverse().slice(0,5);
   rs.innerHTML=rc.length?rc.map(sCard).join(''):`<div class="empty"><div class="ei">🛒</div><p>ยังไม่มีรายการขาย</p></div>`;
 }
 
+/* ---- CHART RENDERER ---- */
 function renderChart(){
   const svg=document.getElementById('chart');
-  const lb=document.getElementById('cht-lbs');
-  const days=7,W=300,H=90,pad=4,bw=Math.floor((W-pad*2)/days)-3;
-  const dd=[];let mx=1;
-  for(let i=days-1;i>=0;i--){
-    const d=new Date();d.setDate(d.getDate()-i);
-    const ds=d.toISOString().slice(0,10);
-    const rev=S.sales.filter(s=>(s.Date||'').startsWith(ds)).reduce((a,s)=>a+(+s.Total||0),0);
-    dd.push({ds,rev,d});if(rev>mx)mx=rev;
+  const lbEl=document.getElementById('cht-lbs');
+  const sumEl=document.getElementById('chart-summary');
+  const emptyEl=document.getElementById('chart-empty');
+  const W=300,H=100,pad=4;
+
+  if(_chartMode==='cat'){
+    renderCatChart(svg,lbEl,sumEl,emptyEl,W,H,pad);
+  } else {
+    renderBarChart(svg,lbEl,sumEl,emptyEl,W,H,pad);
   }
-  document.getElementById('cht-tot').textContent='฿'+fn(dd.reduce((a,d)=>a+d.rev,0));
+}
+
+/* BAR CHART — 7d or 30d */
+function renderBarChart(svg,lbEl,sumEl,emptyEl,W,H,pad){
+  const days=_chartMode==='30d'?30:7;
+  const bw=_chartMode==='30d'?Math.floor((W-pad*2)/days)-1:Math.floor((W-pad*2)/days)-3;
+  const gap=_chartMode==='30d'?1:3;
+  const dd=[]; let mx=1,total=0,totalPrf=0;
+
+  for(let i=days-1;i>=0;i--){
+    const d=new Date(); d.setDate(d.getDate()-i);
+    const ds=d.toISOString().slice(0,10);
+    const daySales=S.sales.filter(s=>(s.Date||'').startsWith(ds));
+    const rev=daySales.reduce((a,s)=>a+(+s.Total||0),0);
+    const prf=daySales.reduce((a,s)=>a+(+s.Profit||0),0);
+    dd.push({ds,rev,prf,d,cnt:daySales.length});
+    if(rev>mx)mx=rev; total+=rev; totalPrf+=prf;
+  }
+
+  // Summary badges
+  sumEl.innerHTML=`
+    <span class="bg o">ยอดขาย ฿${fn(total)}</span>
+    <span class="bg g">กำไร ฿${fn(totalPrf)}</span>
+    <span class="bg b">${dd.filter(d=>d.rev>0).length} วันมียอด</span>`;
+
+  if(total===0){
+    svg.innerHTML=''; emptyEl.style.display='flex'; lbEl.innerHTML=''; return;
+  }
+  emptyEl.style.display='none';
+
   const today=new Date().toISOString().slice(0,10);
-  let html='<defs><linearGradient id="g1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ef6c00"/></linearGradient></defs>';
+  let html=`<defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f59e0b"/><stop offset="100%" stop-color="#ef6c00"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3b82f6" stop-opacity=".8"/><stop offset="100%" stop-color="#1d4ed8" stop-opacity=".4"/>
+    </linearGradient>
+  </defs>`;
+
   dd.forEach((d,i)=>{
-    const x=pad+i*(bw+3),bh=Math.max(4,(d.rev/mx)*(H-14)),y=H-bh,it=d.ds===today;
-    html+=`<g><rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="3" fill="${it?'url(#g1)':'rgba(59,130,246,0.4)'}" stroke="${it?'#f59e0b':'rgba(59,130,246,.6)'}" stroke-width=".5"/>
-    ${d.rev>0?`<text x="${x+bw/2}" y="${y-2}" text-anchor="middle" font-size="5.5" fill="rgba(221,232,248,.7)">${d.rev>=1000?(d.rev/1000).toFixed(1)+'K':d.rev}</text>`:''}</g>`;
+    const x=pad+i*(bw+gap);
+    const bh=Math.max(3,(d.rev/mx)*(H-18));
+    const y=H-bh;
+    const it=d.ds===today;
+    html+=`<g>
+      <rect x="${x}" y="${y}" width="${bw}" height="${bh}" rx="2"
+        fill="${it?'url(#g1)':'url(#g2)'}" opacity="${d.rev>0?1:.2}"/>
+      ${d.rev>0&&_chartMode!=='30d'?`<text x="${x+bw/2}" y="${y-2}" text-anchor="middle" font-size="5.5" fill="rgba(221,232,248,.7)">${d.rev>=1000?(d.rev/1000).toFixed(1)+'K':d.rev}</text>`:''}
+    </g>`;
   });
   svg.innerHTML=html;
-  lb.innerHTML=dd.map(d=>`<span style="font-size:.6rem;color:var(--txt2)">${d.d.getDate()}/${d.d.getMonth()+1}</span>`).join('');
+
+  // Labels
+  if(_chartMode==='7d'){
+    lbEl.innerHTML=dd.map(d=>`<span style="font-size:.6rem;color:var(--txt2)">${d.d.getDate()}/${d.d.getMonth()+1}</span>`).join('');
+  } else {
+    // 30d: show only first and last
+    const first=dd[0].d, last=dd[dd.length-1].d;
+    lbEl.innerHTML=`<span style="font-size:.6rem;color:var(--txt2)">${first.getDate()}/${first.getMonth()+1}</span>
+      <span style="font-size:.6rem;color:var(--txt2);opacity:.5">──── 30 วัน ────</span>
+      <span style="font-size:.6rem;color:var(--txt2)">${last.getDate()}/${last.getMonth()+1}</span>`;
+  }
+}
+
+/* CATEGORY PIE / BAR CHART — horizontal bars by category */
+function renderCatChart(svg,lbEl,sumEl,emptyEl,W,H,pad){
+  // Count sales by category in last 30 days
+  const since=new Date(); since.setDate(since.getDate()-30);
+  const catMap={};
+  S.sales.filter(s=>new Date(s.Date)>=since).forEach(sale=>{
+    (sale.Items||[]).forEach(it=>{
+      const prod=S.products.find(p=>p.ProductCode===it.ProductCode);
+      const cat=(prod&&prod.Category)||'ไม่ระบุ';
+      if(!catMap[cat]) catMap[cat]={rev:0,qty:0};
+      catMap[cat].rev+=it.Subtotal||0;
+      catMap[cat].qty+=it.Qty||0;
+    });
+  });
+  const cats=Object.entries(catMap).sort((a,b)=>b[1].rev-a[1].rev).slice(0,6);
+  const totalRev=cats.reduce((a,c)=>a+c[1].rev,0);
+
+  sumEl.innerHTML=`<span class="bg o">30 วันล่าสุด · ${cats.length} หมวดหมู่</span><span class="bg b">฿${fn(totalRev)}</span>`;
+
+  if(!cats.length){svg.innerHTML='';emptyEl.style.display='flex';lbEl.innerHTML='';return;}
+  emptyEl.style.display='none';
+
+  const colors=['#f59e0b','#3b82f6','#22c55e','#8b5cf6','#ef4444','#14b8a6'];
+  const rowH=Math.floor((H-8)/Math.min(cats.length,6));
+  const maxRev=cats[0][1].rev||1;
+  let html='';
+  cats.forEach(([cat,d],i)=>{
+    const barW=Math.max(10,(d.rev/maxRev)*(W-80));
+    const y=4+i*rowH;
+    html+=`
+      <rect x="0" y="${y+2}" width="${barW}" height="${rowH-5}" rx="3" fill="${colors[i%colors.length]}" opacity=".75"/>
+      <text x="${barW+4}" y="${y+rowH-5}" font-size="6.5" fill="rgba(221,232,248,.7)">฿${d.rev>=1000?(d.rev/1000).toFixed(1)+'K':fn(d.rev)}</text>
+      <text x="0" y="${y+rowH-5}" font-size="6" fill="rgba(221,232,248,.5)" dy="-${rowH-9}">${cat.length>8?cat.slice(0,8)+'..':cat}</text>`;
+  });
+  svg.innerHTML=html;
+  lbEl.innerHTML='';
+}
+
+/* BEST SELLERS */
+function renderBestSellers(){
+  const days=_chartMode==='30d'?30:7;
+  document.getElementById('bsp-period').textContent=days+' วัน';
+  const since=new Date(); since.setDate(since.getDate()-days);
+  const pMap={};
+  S.sales.filter(s=>new Date(s.Date)>=since).forEach(sale=>{
+    (sale.Items||[]).forEach(it=>{
+      if(!pMap[it.ProductCode]) pMap[it.ProductCode]={name:it.ProductName||it.ProductCode,qty:0,rev:0};
+      pMap[it.ProductCode].qty+=it.Qty||0;
+      pMap[it.ProductCode].rev+=it.Subtotal||0;
+    });
+  });
+  const tops=Object.entries(pMap).sort((a,b)=>b[1].qty-a[1].qty).slice(0,5);
+  const maxQty=tops[0]?tops[0][1].qty:1;
+  const el=document.getElementById('best-sellers');
+  if(!tops.length){el.innerHTML=`<div style="text-align:center;color:var(--txt3);font-size:.8rem;padding:10px 0">ยังไม่มีข้อมูล</div>`;return;}
+  el.innerHTML=tops.map(([code,d],i)=>{
+    const pct=Math.round((d.qty/maxQty)*100);
+    const medals=['🥇','🥈','🥉','4️⃣','5️⃣'];
+    return `<div style="margin-bottom:9px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-size:.8rem;font-weight:700">${medals[i]} ${e(d.name)}</span>
+        <span style="font-size:.72rem;color:var(--acc);font-weight:700">${d.qty} ชิ้น · ฿${fn(d.rev)}</span>
+      </div>
+      <div style="background:var(--bdr);border-radius:4px;height:5px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:4px;transition:width .5s"></div>
+      </div>
+    </div>`;
+  }).join('');
 }
 
 /* ---- POS ---- */
@@ -921,10 +1185,9 @@ async function checkout(){
   buildRcpt(sale);openM('m-rcpt');
   if(S.cfg.ap)setTimeout(doPrint,400);
   // Sync
-  if(S.apiUrl){
-    api('createSale',sale);
-    cartCopy.forEach(c=>api('updateStock',{ProductCode:c.ProductCode,Type:'OUT',Quantity:c.cartQty,Note:`ขาย [${sid}]`}));
-  }
+  /* ✅ Queue sale + stock deductions (retry-safe) */
+  queueSync('createSale', sale);
+  cartCopy.forEach(c=>queueSync('updateStock',{ProductCode:c.ProductCode,Type:'OUT',Quantity:c.cartQty,Note:`ขาย [${sid}]`}));
 }
 
 /* ---- RECEIPT ---- */
@@ -1054,7 +1317,13 @@ function saveProd(){
   DB.s('products',S.products);
   closeM('m-prod');renderAll();
   showToast(orig?'แก้ไขสินค้าสำเร็จ ✓':'เพิ่มสินค้าสำเร็จ ✓');
-  if(S.apiUrl){const action=orig?'updateProduct':'addProduct';api(action,orig?{...data,OriginalCode:orig}:data);}
+  /* ✅ ใช้ queueSync แทน api() โดยตรง — รับประกันว่าจะ retry ถ้าล้มเหลว */
+  const action=orig?'updateProduct':'addProduct';
+  queueSync(action, orig?{...data,OriginalCode:orig}:data);
+  /* sync initial stock transaction ด้วย (ถ้าเป็นสินค้าใหม่มีสต็อก) */
+  if(!orig && data.StockQty>0){
+    queueSync('updateStock',{ProductCode:code,Type:'IN',Quantity:data.StockQty,Note:'สต็อกเริ่มต้น'});
+  }
 }
 
 /* ---- STOCK MODAL ---- */
@@ -1086,14 +1355,15 @@ function doStock(){
   S.transactions.unshift({Date:new Date().toISOString(),ProductCode:p.ProductCode,ProductName:p.ProductName||p.ProductCode,Type:S.stType,Quantity:qty,Note:note});
   DB.s('products',S.products);DB.s('transactions',S.transactions);
   closeM('m-stock');renderAll();showToast((S.stType==='IN'?'รับเข้า':'เบิกออก')+' สำเร็จ ✓');
-  if(S.apiUrl)api('updateStock',{ProductCode:p.ProductCode,Type:S.stType,Quantity:qty,Note:note});
+  /* ✅ queue แทน fire-and-forget */
+  queueSync('updateStock',{ProductCode:p.ProductCode,Type:S.stType,Quantity:qty,Note:note});
 }
 
 /* ---- DELETE ---- */
 function doDel(code){
   const p=S.products.find(x=>x.ProductCode===code);
   document.getElementById('conf-msg').textContent=`ลบ "${p?p.ProductName:code}"? ไม่สามารถกู้คืนได้`;
-  document.getElementById('conf-ok').onclick=()=>{S.products=S.products.filter(x=>x.ProductCode!==code);delete S.images[code];DB.s('products',S.products);DB.s('images',S.images);closeM('m-conf');renderAll();showToast('ลบแล้ว');if(S.apiUrl)api('deleteProduct',{ProductCode:code});};
+  document.getElementById('conf-ok').onclick=()=>{S.products=S.products.filter(x=>x.ProductCode!==code);delete S.images[code];DB.s('products',S.products);DB.s('images',S.images);closeM('m-conf');renderAll();showToast('ลบแล้ว');queueSync('deleteProduct',{ProductCode:code});};
   openM('m-conf');
 }
 
@@ -1165,7 +1435,7 @@ function exportCSV(){
   setTimeout(()=>dl('\ufeff'+p,'stockify-products-'+_td()+'.csv','text/csv;charset=utf-8'),500);
   showToast('Export CSV สำเร็จ 📊');
 }
-function doClearAll(){document.getElementById('conf-msg').textContent='ล้างข้อมูลทั้งหมดในเครื่อง? (Cloud ยังคงอยู่)';document.getElementById('conf-ok').onclick=()=>{['products','transactions','sales','images'].forEach(k=>DB.r(k));S.products=[];S.transactions=[];S.sales=[];S.images={};closeM('m-conf');renderAll();showToast('ล้างแล้ว');};openM('m-conf');}
+function doClearAll(){document.getElementById('conf-msg').textContent='ล้างข้อมูลทั้งหมดในเครื่อง? (Cloud ยังคงอยู่)';document.getElementById('conf-ok').onclick=()=>{['products','transactions','sales','images','pendingQ'].forEach(k=>DB.r(k));S.products=[];S.transactions=[];S.sales=[];S.images={};S.pendingQ=[];closeM('m-conf');renderAll();updPendingBadge();showToast('ล้างแล้ว');};openM('m-conf');}
 
 /* ---- NAV ---- */
 function navTo(page){
