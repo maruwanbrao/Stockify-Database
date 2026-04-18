@@ -327,7 +327,7 @@ select.fi option{background:var(--s2);}
     <button class="ibtn" onclick="openScanner()">📷</button>
     <button class="ibtn" onclick="refreshData()" title="รีเฟรช">🔄</button>
     <!-- ⏳ pending sync badge — แสดงเมื่อมี operation รอ sync -->
-    <div id="pending-count" style="display:none;font-size:.62rem;color:var(--acc);font-weight:700;padding:2px 7px;background:rgba(245,158,11,.12);border-radius:10px;white-space:nowrap"></div>
+    <div id="pending-count" onclick="flushQueue()" style="display:none;font-size:.62rem;color:var(--acc);font-weight:700;padding:2px 7px;background:rgba(245,158,11,.12);border-radius:10px;white-space:nowrap;cursor:pointer" title="กดเพื่อ retry"></div>
   </div>
 
   <div class="content">
@@ -805,7 +805,10 @@ async function api(action,data={}){
     const j=await r.json();
     if(j.status==='error')throw new Error(j.message);
     return j;
-  }catch(e){console.warn('API:',e.message);return null;}
+  }catch(e){
+    console.warn('API ['+action+'] failed:',e.message);
+    return null;
+  }
 }
 
 /* ================================================================
@@ -844,7 +847,13 @@ async function flushQueue(){
     } else {
       // ❌ ล้มเหลว — เพิ่ม retry count (จะลองใหม่ครั้งหน้า)
       const idx=S.pendingQ.findIndex(x=>x.id===op.id);
-      if(idx!==-1){ S.pendingQ[idx].retries=(S.pendingQ[idx].retries||0)+1; DB.s('pendingQ',S.pendingQ); }
+      if(idx!==-1){
+        const retries=(S.pendingQ[idx].retries||0)+1;
+        S.pendingQ[idx].retries=retries;
+        DB.s('pendingQ',S.pendingQ);
+        // หลัง 5 ครั้งยังไม่ได้ → แจ้งเตือนให้ check API URL
+        if(retries===5) showToast('⚠️ '+op.action+' ล้มเหลว '+retries+' ครั้ง — ตรวจสอบ API URL ในตั้งค่า','er');
+      }
       failCount++;
     }
   }
@@ -877,14 +886,42 @@ async function bgSync(){
     await new Promise(r=>setTimeout(r,600));
   }
 
-  /* STEP 2: ดึงข้อมูลล่าสุดจาก Sheets (หลัง push แล้ว) */
+  /* STEP 2: ดึงข้อมูลล่าสุดจาก Sheets */
   const [p,t,s]=await Promise.all([api('getProducts'),api('getTransactions'),api('getSales')]);
-  if(p){S.products=p.data||[];DB.s('products',S.products);}
+
+  /* ── SMART MERGE ────────────────────────────────────────────────────
+     ปัญหาเดิม: pull จาก Sheets แล้ว overwrite local data ทันที
+     ถ้า addProduct ยังอยู่ใน pendingQ (sync ยังไม่สำเร็จ) → สินค้าจะหาย!
+
+     การแก้ไข: หลัง pull แล้ว ให้ re-apply item ที่ยังอยู่ใน pendingQ ทับ
+     ─────────────────────────────────────────────────────────────────── */
+  if(p){
+    let merged = p.data || [];
+    // re-apply pending addProduct / updateProduct ที่ยังไม่ sync สำเร็จ
+    S.pendingQ.forEach(op=>{
+      if(op.action==='addProduct'){
+        if(!merged.find(x=>x.ProductCode===op.data.ProductCode)){
+          merged.push(op.data); // ใส่กลับเข้าไป
+        }
+      }
+      if(op.action==='updateProduct'){
+        const idx=merged.findIndex(x=>x.ProductCode===(op.data.OriginalCode||op.data.ProductCode));
+        if(idx!==-1) merged[idx]={...merged[idx],...op.data}; // overwrite ด้วย local version
+      }
+      if(op.action==='deleteProduct'){
+        merged=merged.filter(x=>x.ProductCode!==op.data.ProductCode); // ลบ local
+      }
+    });
+    S.products=merged;
+    DB.s('products',S.products);
+  }
   if(t){S.transactions=t.data||[];DB.s('transactions',S.transactions);}
   if(s){S.sales=s.data||[];DB.s('sales',S.sales);}
+
   S.lastSync=new Date().toISOString();DB.s('lastSync',S.lastSync);
   d.className='sdot on';updSyncUI('online');renderAll();
-  showToast('ซิงค์ข้อมูลสำเร็จ ✓','in');
+  const pn=S.pendingQ.length;
+  showToast(pn>0?'ดึงข้อมูลสำเร็จ · ยังรอซิงค์ '+pn+' รายการ':'ซิงค์ข้อมูลสำเร็จ ✓', pn>0?'wa':'in');
 }
 
 async function refreshData(){
@@ -1320,9 +1357,14 @@ function saveProd(){
   /* ✅ ใช้ queueSync แทน api() โดยตรง — รับประกันว่าจะ retry ถ้าล้มเหลว */
   const action=orig?'updateProduct':'addProduct';
   queueSync(action, orig?{...data,OriginalCode:orig}:data);
-  /* sync initial stock transaction ด้วย (ถ้าเป็นสินค้าใหม่มีสต็อก) */
+  /* NOTE: ไม่ queue updateStock ที่นี่ เพราะ Code.gs ใหม่ไม่ได้ตัดสต็อกใน addProduct
+     frontend บันทึก transaction ลง localStorage แล้ว และ GAS updateStock จะ sync แยกจาก doStock()
+     ถ้าต้องการบันทึกสต็อกเริ่มต้นลง Sheets ให้กด "อัปเดตสต็อก" หลังเพิ่มสินค้า
+     หรือตั้งค่า StockQty > 0 ตอนเพิ่ม แล้ว queue updateStock ด้านล่างนี้:  */
+  /* ✅ sync สต็อกเริ่มต้นถ้ามี (Code.gs ใหม่ไม่ได้บันทึก initial stock ใน addProduct) */
   if(!orig && data.StockQty>0){
     queueSync('updateStock',{ProductCode:code,Type:'IN',Quantity:data.StockQty,Note:'สต็อกเริ่มต้น'});
+    /* ▲ แก้ไขจุดนี้: ถ้า Code.gs ของคุณ addProduct บันทึก initial stock เองแล้ว → comment บรรทัดนี้ออก */
   }
 }
 
